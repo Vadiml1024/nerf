@@ -1,9 +1,15 @@
-import os
+from re import I
+import os,sys
+from tkinter import W
 from dotenv import load_dotenv
 import requests
 import json
 from twitchio.ext import commands
 from datetime import datetime
+import logging
+import requests
+from contextlib import ContextDecorator
+from reqlogger import ReqLogger
 
 # Load environment variables
 load_dotenv()
@@ -16,20 +22,84 @@ MIN_VERTICAL = int(os.getenv("MIN_VERTICAL", 0))
 MAX_VERTICAL = int(os.getenv("MAX_VERTICAL", 60))
 
 # Twitch configuration
-TWITCH_OAUTH_TOKEN = os.getenv("TWITCH_OAUTH_TOKEN")
+TWITCH_ACCESS_TOKEN = os.getenv("TWITCH_ACCESS_TOKEN")
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
 TWITCH_CHANNEL_NAME = os.getenv("TWITCH_CHANNEL_NAME")
+TWITCH_SECRET = os.getenv("TWITCH_CLIENT_SECRET")
+
+WITH_TTG_1 = True
+
+if WITH_TTG_1:
+    TWITCH_ACCESS_TOKEN = os.getenv("TTG_ACCESS_TOKEN")
+    TWITCH_CLIENT_ID = os.getenv("TTG_TWITCH_BOT_CLIENT_ID")
+    TWITCH_SECRET = os.getenv("TTG_TWITCH_BOT_CLIENT_SECRET")
+
+
+class OldReqLogger(ContextDecorator):
+    def __init__(self, level=logging.DEBUG, log_to_console=True, log_file=None):
+        self.level = level
+        self.log_to_console = log_to_console
+        self.log_file = log_file
+        self.logger = logging.getLogger("urllib3")
+        self.file_handler = None
+        self.stream_handler = None
+        self.previous_level = None
+
+    def __enter__(self):
+        # Save the previous logging level to restore it after context exits
+        self.previous_level = self.logger.level
+
+        # Set logging level to the specified level
+        self.logger.setLevel(self.level)
+
+        # Set up console logging if required
+        if self.log_to_console:
+            self.stream_handler = logging.StreamHandler(stream=sys.stdout)
+            self.stream_handler.setLevel(self.level)
+            self.logger.addHandler(self.stream_handler)
+
+        # Set up file logging if a file path is provided
+        if self.log_file:
+            self.file_handler = logging.FileHandler(self.log_file)
+            self.file_handler.setLevel(self.level)
+            self.logger.addHandler(self.file_handler)
+
+        if False:
+            # Enable verbose logging of request and response details including headers
+            http_logger = logging.getLogger("requests.packages.urllib3")
+            http_logger.setLevel(self.level)
+            http_logger.propagate = True
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Restore the previous logging level
+        self.logger.setLevel(self.previous_level)
+
+        # Remove stream handler if added
+        if self.stream_handler:
+            self.logger.removeHandler(self.stream_handler)
+            self.stream_handler = None
+
+        # Remove file handler if added
+        if self.file_handler:
+            self.logger.removeHandler(self.file_handler)
+            self.file_handler = None
+
+        return False  # Allows exceptions to propagate
+
+
 
 
 class NerfGunBot(commands.Bot):
     def __init__(self):
         super().__init__(
-            token=TWITCH_OAUTH_TOKEN, prefix="!", initial_channels=[TWITCH_CHANNEL_NAME]
+            token=TWITCH_ACCESS_TOKEN, prefix="!", client_secret=None, initial_channels=[TWITCH_CHANNEL_NAME]
         )
         self.gun_config = self.load_gun_config()
         self.twitch_headers = {
             "Client-ID": TWITCH_CLIENT_ID,
-            "Authorization": f"Bearer {TWITCH_OAUTH_TOKEN}",
+            "Authorization": f"Bearer {TWITCH_ACCESS_TOKEN}",
         }
         self.broadcaster_id = None
 
@@ -75,6 +145,7 @@ class NerfGunBot(commands.Bot):
         # Check if user is subscribed
         if not await self.check_subscription(ctx.author):
             await ctx.send(f"{username} is not a subscriber and cannot use the !fire command.")
+            await ctx.send(f"/w {username} you are not a subscriber")
             return
 
         subscription_level = await self.get_subscription_level(ctx.author)
@@ -106,18 +177,38 @@ class NerfGunBot(commands.Bot):
         await ctx.send(f"{username} fired {shots_fired} shots!")
         await ctx.send(f"/w {username} You have {remaining_credits} credits remaining.")
 
-    async def check_subscription(self, user):
-        user_id = await self.get_user_id(user.name)
-        url = f"https://api.twitch.tv/helix/subscriptions/user?broadcaster_id={self.broadcaster_id}&user_id={user_id}"
+    async def old_check_subscription(self, user):
 
-        try:
-            response = requests.get(url, headers=self.twitch_headers)
-            response.raise_for_status()
-            data = response.json()
-            return len(data["data"]) > 0
-        except requests.RequestException as e:
-            print(f"Error checking subscription: {e}")
-            return False
+#        with ReqLogger(logging.DEBUG):
+            user_id = await self.get_user_id(user.name)
+            url = f"https://api.twitch.tv/helix/subscriptions/user?broadcaster_id={self.broadcaster_id}&user_id={user_id}"
+
+            try:
+                response = requests.get(url, headers=self.twitch_headers)
+                response.raise_for_status()
+                data = response.json()
+                return len(data["data"]) > 0
+            except requests.RequestException as e:
+                print(f"Error checking subscription: {e}")
+                return False
+   
+   
+    async def check_subscription(self, user):
+
+#        with ReqLogger(logging.DEBUG):
+            user_id = await self.get_user_id(user.name)
+            # url = f"https://api.twitch.tv/helix/subscriptions/user?broadcaster_id={self.broadcaster_id}&user_id={user_id}"
+
+            try:
+                subs = await self._http.get_channel_subscriptions(token = TWITCH_ACCESS_TOKEN, 
+                                                            broadcaster_id=self.broadcaster_id,user_ids=[user_id])
+                if subs:
+                    return True
+                
+                return False
+            except requests.RequestException as e:
+                print(f"Error checking subscription: {e}")
+                return False
 
     async def get_subscription_level(self, user):
         user_id = await self.get_user_id(user.name)
@@ -137,7 +228,9 @@ class NerfGunBot(commands.Bot):
             print(f"Error getting subscription level: {e}")
             return 0
 
-    async def get_user_id(self, username):
+    
+    async def old_get_user_id(self, username):
+
         url = f"https://api.twitch.tv/helix/users?login={username}"
 
         try:
@@ -148,6 +241,18 @@ class NerfGunBot(commands.Bot):
         except requests.RequestException as e:
             print(f"Error getting user ID: {e}")
             return None
+
+    async def get_user_id(self, username):
+
+
+        try:
+            users = await self.fetch_users(names=[ username ])
+            return users[0].id
+        except requests.RequestException as e:
+            print(f"Error getting user ID: {e}")
+            return None
+
+
 
     async def fetch_or_create_user_data(self, username, subscription_level):
         try:
@@ -202,8 +307,9 @@ class NerfGunBot(commands.Bot):
 
 
 def main():
-    bot = NerfGunBot()
-    bot.run()
+    with ReqLogger(level=logging.DEBUG):
+        bot = NerfGunBot()
+        bot.run()
 
 
 if __name__ == "__main__":
