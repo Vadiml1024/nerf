@@ -1,6 +1,6 @@
 import pytest
 import time
-from nerf_controller import NerfController
+from nerf_gun_control.nerf_controller import NerfController
 
 # Make sure this URL matches your Nerf server address
 SERVER_URL = "http://localhost:5555"
