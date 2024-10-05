@@ -33,6 +33,7 @@ if WITH_TTG_1:
     TWITCH_ACCESS_TOKEN = os.getenv("TTG_ACCESS_TOKEN")
     TWITCH_CLIENT_ID = os.getenv("TTG_TWITCH_BOT_CLIENT_ID")
     TWITCH_SECRET = os.getenv("TTG_TWITCH_BOT_CLIENT_SECRET")
+    TWITCH_REFRESH_TOKEN = os.getenv("TTG_REFRESH_TOKEN")
 
 
 class OldReqLogger(ContextDecorator):
@@ -94,7 +95,11 @@ class OldReqLogger(ContextDecorator):
 class NerfGunBot(commands.Bot):
     def __init__(self):
         super().__init__(
-            token=TWITCH_ACCESS_TOKEN, prefix="!", client_secret=None, initial_channels=[TWITCH_CHANNEL_NAME]
+            token=TWITCH_ACCESS_TOKEN,
+            client_id = TWITCH_CLIENT_ID,
+            refresh_token=TWITCH_REFRESH_TOKEN,
+            client_secret=TWITCH_SECRET, 
+            prefix="!", initial_channels=[TWITCH_CHANNEL_NAME]
         )
         self.gun_config = self.load_gun_config()
         self.twitch_headers = {
@@ -112,6 +117,10 @@ class NerfGunBot(commands.Bot):
             return
         await self.handle_commands(message)
 
+    async def event_token_expired():
+        print("Token expired")
+        return None
+    
     def load_gun_config(self):
         try:
             response = requests.get(f"{WORDPRESS_API_URL}/config")
