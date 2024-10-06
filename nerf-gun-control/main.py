@@ -42,9 +42,11 @@ class TokenManager:
                     self.access_token = data['access_token']
                     if 'refresh_token' in data:
                         self.refresh_token = data['refresh_token']
+                        params.update_vars(self.access_token, self.refresh_token)
                         print("Refresh token updated")
                     else:
                         print("No new refresh token provided")
+                   
                     return True
                 else:
                     print(f"Failed to refresh token: {await resp.text()}")
@@ -55,23 +57,27 @@ class TokenManager:
         bot.twitch_headers["Authorization"] = f"Bearer {self.access_token}"
 
 class NerfGunBot(commands.Bot):
-    def __init__(self):
+    def __init__(self, tokmgr = None):
+        if tokmgr is None:
+                self.token_manager = TokenManager(
+                TWITCH_ACCESS_TOKEN,
+                TWITCH_REFRESH_TOKEN,
+                TWITCH_CLIENT_ID,
+                TWITCH_SECRET
+            )
+        else:
+            self.token_manager = tokmgr
+
         super().__init__(
-            token=TWITCH_ACCESS_TOKEN,
-            client_id=TWITCH_CLIENT_ID,
-            nick=TWITCH_CHANNEL_NAME,
-            prefix="!",
-            initial_channels=[TWITCH_CHANNEL_NAME]
-        )
-        self.token_manager = TokenManager(
-            TWITCH_ACCESS_TOKEN,
-            TWITCH_REFRESH_TOKEN,
-            TWITCH_CLIENT_ID,
-            TWITCH_SECRET
-        )
+                token=self.token_manager.access_token,
+                client_id=self.token_manager.client_id,
+                nick=TWITCH_CHANNEL_NAME,
+                prefix="!",
+                initial_channels=[TWITCH_CHANNEL_NAME]
+            )
         self.twitch_headers = {
-            "Client-ID": TWITCH_CLIENT_ID,
-            "Authorization": f"Bearer {TWITCH_ACCESS_TOKEN}",
+            "Client-ID": self.token_manager.client_id,
+            "Authorization": f"Bearer {self.token_manager.access_token}",
         }
         self.broadcaster_id = None
         self.nerf_controller = NerfController(os.getenv("NERF_CONTROLLER_URL", "http://localhost:5555"))
