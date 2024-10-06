@@ -2,35 +2,38 @@ import logging
 import requests
 from contextlib import ContextDecorator
 
+
 class ReqLogger(ContextDecorator):
     def __init__(self, level=logging.DEBUG, log_to_console=True, log_file=None):
         self.level = level
         self.log_to_console = log_to_console
         self.log_file = log_file
-        self.logger = logging.getLogger("urllib3")
+        self.loggers = [ logging.getLogger(x) for x in ["aiohttp.client", "aiohttp.web"] ]
         self.file_handler = None
         self.stream_handler = None
-        self.previous_level = None
+        self.previous_level = []
 
     def __enter__(self):
         # Save the previous logging level to restore it after context exits
-        self.previous_level = self.logger.level
-
-        # Set logging level to the specified level
-        self.logger.setLevel(self.level)
-
-        # Set up console logging if required
+ 
         if self.log_to_console:
             self.stream_handler = logging.StreamHandler()
             self.stream_handler.setLevel(self.level)
-            self.logger.addHandler(self.stream_handler)
 
-        # Set up file logging if a file path is provided
         if self.log_file:
             self.file_handler = logging.FileHandler(self.log_file)
             self.file_handler.setLevel(self.level)
-            self.logger.addHandler(self.file_handler)
 
+        for logger in self.loggers:
+            self.previous_level.append(logger.level)
+            logger.setLevel(self.level)
+            if self.log_to_console:
+                # Set up console logging if required
+                logger.addHandler(self.stream_handler)
+            if self.log_file:
+                logger.addHandler(self.file_handler)
+
+ 
         # Enable verbose logging of request and response details including headers
         http_logger = logging.getLogger("requests.packages.urllib3")
         http_logger.setLevel(self.level)
@@ -40,7 +43,8 @@ class ReqLogger(ContextDecorator):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         # Restore the previous logging level
-        self.logger.setLevel(self.previous_level)
+        for logger,level in zip(self.loggers, self.previous_level):
+            logger.setLevel(level)
 
         # Remove stream handler if added
         if self.stream_handler:
