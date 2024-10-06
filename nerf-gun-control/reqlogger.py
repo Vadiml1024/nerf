@@ -48,12 +48,15 @@ class ReqLogger(ContextDecorator):
 
         # Remove stream handler if added
         if self.stream_handler:
-            self.logger.removeHandler(self.stream_handler)
+            for logger in self.loggers:
+                logger.removeHandler(self.stream_handler)
             self.stream_handler = None
 
         # Remove file handler if added
         if self.file_handler:
-            self.logger.removeHandler(self.file_handler)
+            for logger in self.loggers:
+                logger.removeHandler(self.file_handler)
+
             self.file_handler = None
 
         return False  # Allows exceptions to propagate
