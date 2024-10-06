@@ -1,112 +1,109 @@
-from re import I
-import os,sys
-from tkinter import W
-from dotenv import load_dotenv
-import requests
-import json
-from twitchio.ext import commands
-from datetime import datetime
+from lib2to3.btm_matcher import BottomMatcher
+import aiohttp
+import os
+from pydoc import cli
+import sys
+import asyncio
 import logging
 import requests
-from contextlib import ContextDecorator
+from twitchio.ext import commands
+from datetime import datetime
 from reqlogger import ReqLogger
+from nerf_controller import NerfController
+from twitchio.errors import AuthenticationError
+from params import *
 
 # Load environment variables
-load_dotenv()
-
-# Configuration
-WORDPRESS_API_URL = os.getenv("WORDPRESS_API_URL")
-MIN_HORIZONTAL = int(os.getenv("MIN_HORIZONTAL", -45))
-MAX_HORIZONTAL = int(os.getenv("MAX_HORIZONTAL", 45))
-MIN_VERTICAL = int(os.getenv("MIN_VERTICAL", 0))
-MAX_VERTICAL = int(os.getenv("MAX_VERTICAL", 60))
-
-# Twitch configuration
-TWITCH_ACCESS_TOKEN = os.getenv("TWITCH_ACCESS_TOKEN")
-TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
-TWITCH_CHANNEL_NAME = os.getenv("TWITCH_CHANNEL_NAME")
-TWITCH_SECRET = os.getenv("TWITCH_CLIENT_SECRET")
-
-WITH_TTG_1 = True
-
-if WITH_TTG_1:
-    TWITCH_ACCESS_TOKEN = os.getenv("TTG_ACCESS_TOKEN")
-    TWITCH_CLIENT_ID = os.getenv("TTG_TWITCH_BOT_CLIENT_ID")
-    TWITCH_SECRET = os.getenv("TTG_TWITCH_BOT_CLIENT_SECRET")
-    TWITCH_REFRESH_TOKEN = os.getenv("TTG_REFRESH_TOKEN")
-
-
-class OldReqLogger(ContextDecorator):
-    def __init__(self, level=logging.DEBUG, log_to_console=True, log_file=None):
-        self.level = level
-        self.log_to_console = log_to_console
-        self.log_file = log_file
-        self.logger = logging.getLogger("urllib3")
-        self.file_handler = None
-        self.stream_handler = None
-        self.previous_level = None
-
-    def __enter__(self):
-        # Save the previous logging level to restore it after context exits
-        self.previous_level = self.logger.level
-
-        # Set logging level to the specified level
-        self.logger.setLevel(self.level)
-
-        # Set up console logging if required
-        if self.log_to_console:
-            self.stream_handler = logging.StreamHandler(stream=sys.stdout)
-            self.stream_handler.setLevel(self.level)
-            self.logger.addHandler(self.stream_handler)
-
-        # Set up file logging if a file path is provided
-        if self.log_file:
-            self.file_handler = logging.FileHandler(self.log_file)
-            self.file_handler.setLevel(self.level)
-            self.logger.addHandler(self.file_handler)
-
-        if False:
-            # Enable verbose logging of request and response details including headers
-            http_logger = logging.getLogger("requests.packages.urllib3")
-            http_logger.setLevel(self.level)
-            http_logger.propagate = True
-
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        # Restore the previous logging level
-        self.logger.setLevel(self.previous_level)
-
-        # Remove stream handler if added
-        if self.stream_handler:
-            self.logger.removeHandler(self.stream_handler)
-            self.stream_handler = None
-
-        # Remove file handler if added
-        if self.file_handler:
-            self.logger.removeHandler(self.file_handler)
-            self.file_handler = None
-
-        return False  # Allows exceptions to propagate
 
 
 
+class TokenManager:
+    def __init__(self, access_token, refresh_token, client_id, client_secret):
+        self.access_token = access_token
+        self.refresh_token = refresh_token
+        self.client_id = client_id
+        self.client_secret = client_secret
+
+    async def get_token(self):
+        return self.access_token
+
+    async def refresh(self):
+        url = "https://id.twitch.tv/oauth2/token"
+        params = {
+            "grant_type": "refresh_token",
+            "refresh_token": self.refresh_token,
+            "client_id": self.client_id,
+            "client_secret": self.client_secret
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, params=params) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self.access_token = data['access_token']
+                    if 'refresh_token' in data:
+                        self.refresh_token = data['refresh_token']
+                        print("Refresh token updated")
+                    else:
+                        print("No new refresh token provided")
+                    return True
+                else:
+                    print(f"Failed to refresh token: {await resp.text()}")
+                    return False
+
+    def update_bot_token(self, bot):
+        bot._http.token = self.access_token
+        bot.twitch_headers["Authorization"] = f"Bearer {self.access_token}"
 
 class NerfGunBot(commands.Bot):
     def __init__(self):
         super().__init__(
             token=TWITCH_ACCESS_TOKEN,
-            client_id = TWITCH_CLIENT_ID,
-            refresh_token=TWITCH_REFRESH_TOKEN,
-            client_secret=TWITCH_SECRET, 
-            prefix="!", initial_channels=[TWITCH_CHANNEL_NAME]
+            client_id=TWITCH_CLIENT_ID,
+            nick=TWITCH_CHANNEL_NAME,
+            prefix="!",
+            initial_channels=[TWITCH_CHANNEL_NAME]
         )
-        self.gun_config = self.load_gun_config()
+        self.token_manager = TokenManager(
+            TWITCH_ACCESS_TOKEN,
+            TWITCH_REFRESH_TOKEN,
+            TWITCH_CLIENT_ID,
+            TWITCH_SECRET
+        )
         self.twitch_headers = {
             "Client-ID": TWITCH_CLIENT_ID,
             "Authorization": f"Bearer {TWITCH_ACCESS_TOKEN}",
         }
         self.broadcaster_id = None
+        self.nerf_controller = NerfController(os.getenv("NERF_CONTROLLER_URL", "http://localhost:5555"))
+
+    async def event_token_expired(self):
+        print("Token expired, attempting to refresh...")
+        success = await self.token_manager.refresh()
+        if success:
+            new_token = self.token_manager.access_token
+            self.token_manager.update_bot_token(self)
+            print("Token refreshed successfully")
+            return new_token
+        else:
+            print("Failed to refresh token")
+            return None
+    
+
+    def load_gun_config(self):
+        if WORDPRESS_API_URL:
+            try:
+                response = requests.get(f"{WORDPRESS_API_URL}/config")
+                return response.json()
+            except requests.RequestException as e:
+                print(f"Error loading gun config: {e}")
+        
+        print("Using default gun configuration")
+        return {
+            "min_horizontal": MIN_HORIZONTAL,
+            "max_horizontal": MAX_HORIZONTAL,
+            "min_vertical": MIN_VERTICAL,
+            "max_vertical": MAX_VERTICAL,
+        }
 
     async def event_ready(self):
         print(f"Logged in as | {self.nick}")
@@ -117,22 +114,6 @@ class NerfGunBot(commands.Bot):
             return
         await self.handle_commands(message)
 
-    async def event_token_expired():
-        print("Token expired")
-        return None
-    
-    def load_gun_config(self):
-        try:
-            response = requests.get(f"{WORDPRESS_API_URL}/config")
-            return response.json()
-        except requests.RequestException as e:
-            print(f"Error loading gun config: {e}")
-            return {
-                "min_horizontal": MIN_HORIZONTAL,
-                "max_horizontal": MAX_HORIZONTAL,
-                "min_vertical": MIN_VERTICAL,
-                "max_vertical": MAX_VERTICAL,
-            }
 
     @commands.command(name="fire")
     async def fire_command(self, ctx: commands.Context, x: int, y: int, z: int):
@@ -315,11 +296,26 @@ class NerfGunBot(commands.Bot):
             print(f"Error updating user credits: {e}")
 
 
-def main():
-    with ReqLogger(level=logging.DEBUG):
-        bot = NerfGunBot()
-        bot.run()
-
+       
+async def main():
+    bot = NerfGunBot()
+    try:
+        await bot.start()
+    except AuthenticationError:
+        print("Authentication failed. Attempting to refresh token...")
+        new_token = await bot.token_manager.refresh()
+        if new_token:
+            bot.token_manager.update_bot_token(bot)
+            print("Token refreshed. Restarting bot...")
+            bot = NerfGunBot()  # Create a new bot instance with the updated token
+            await bot.start()
+        else:
+            print("Failed to refresh token. Please check your Twitch credentials.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        await bot.close()
 
 if __name__ == "__main__":
-    main()
+    with ReqLogger(level=logging.DEBUG):
+        asyncio.run(main())
