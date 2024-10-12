@@ -1,4 +1,6 @@
+from hmac import new
 from lib2to3.btm_matcher import BottomMatcher
+from operator import ne
 import aiohttp
 import os
 from pydoc import cli
@@ -29,20 +31,20 @@ class TokenManager:
 
     async def refresh(self):
         url = "https://id.twitch.tv/oauth2/token"
-        params = {
+        args = {
             "grant_type": "refresh_token",
             "refresh_token": self.refresh_token,
             "client_id": self.client_id,
             "client_secret": self.client_secret
         }
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, params=params) as resp:
+            async with session.post(url, params=args) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     self.access_token = data['access_token']
                     if 'refresh_token' in data:
                         self.refresh_token = data['refresh_token']
-                        params.update_vars(self.access_token, self.refresh_token)
+                        update_vars(self.access_token, self.refresh_token)
                         print("Refresh token updated")
                     else:
                         print("No new refresh token provided")
@@ -313,7 +315,7 @@ async def main():
         if new_token:
             bot.token_manager.update_bot_token(bot)
             print("Token refreshed. Restarting bot...")
-            bot = NerfGunBot()  # Create a new bot instance with the updated token
+            bot = NerfGunBot(tokmgr=bot.token_manager)  # Create a new bot instance with the updated token
             await bot.start()
         else:
             print("Failed to refresh token. Please check your Twitch credentials.")
