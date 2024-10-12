@@ -25,6 +25,8 @@ def load_vars():
     global TWITCH_CHANNEL_NAME, TWITCH_ACCESS_TOKEN, TWITCH_REFRESH_TOKEN
     global TWITCH_CLIENT_ID, TWITCH_SECRET
 
+    dotenv.load_dotenv(override=True)
+
     WORDPRESS_API_URL = os.getenv("WORDPRESS_API_URL")
     MIN_HORIZONTAL = int(os.getenv("MIN_HORIZONTAL", -45))
     MAX_HORIZONTAL = int(os.getenv("MAX_HORIZONTAL", 45))
@@ -39,8 +41,6 @@ def load_vars():
     TWITCH_REFRESH_TOKEN = os.getenv("TTG_REFRESH_TOKEN")
 
 
-def load_vars():
-    dotenv.load_dotenv(override=True)
 
 
 def update_vars(access_token, refresh_token):
