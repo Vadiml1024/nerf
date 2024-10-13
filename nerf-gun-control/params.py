@@ -6,6 +6,7 @@ from weakref import ref
 
 WITH_TTG_1 = True
 WORDPRESS_API_URL = None
+NERF_CONTROLLER_URL = None
 MIN_HORIZONTAL = None
 MAX_HORIZONTAL = None
 MIN_VERTICAL = None
@@ -18,9 +19,10 @@ TWITCH_SECRET = None
 TWITCH_REFRESH_TOKEN = None
 
 
+
 # Configuration
 def load_vars():
-    global WORDPRESS_API_URL
+    global WORDPRESS_API_URL,NERF_CONTROLLER_URL
     global MAX_HORIZONTAL,MAX_VERTICAL,MIN_HORIZONTAL,MIN_VERTICAL
     global TWITCH_CHANNEL_NAME, TWITCH_ACCESS_TOKEN, TWITCH_REFRESH_TOKEN
     global TWITCH_CLIENT_ID, TWITCH_SECRET
@@ -28,6 +30,7 @@ def load_vars():
     dotenv.load_dotenv(override=True)
 
     WORDPRESS_API_URL = os.getenv("WORDPRESS_API_URL")
+    NERF_CONTROLLER_URL = os.getenv("NERF_CONTROLLER_URL", "http://localhost:5555")
     MIN_HORIZONTAL = int(os.getenv("MIN_HORIZONTAL", -45))
     MAX_HORIZONTAL = int(os.getenv("MAX_HORIZONTAL", 45))
     MIN_VERTICAL = int(os.getenv("MIN_VERTICAL", 0))
@@ -39,6 +42,7 @@ def load_vars():
     TWITCH_CLIENT_ID = os.getenv("TTG_TWITCH_BOT_CLIENT_ID")
     TWITCH_SECRET = os.getenv("TTG_TWITCH_BOT_CLIENT_SECRET")
     TWITCH_REFRESH_TOKEN = os.getenv("TTG_REFRESH_TOKEN")
+
 
 
 

@@ -82,7 +82,8 @@ class NerfGunBot(commands.Bot):
             "Authorization": f"Bearer {self.token_manager.access_token}",
         }
         self.broadcaster_id = None
-        self.nerf_controller = NerfController(os.getenv("NERF_CONTROLLER_URL", "http://localhost:5555"))
+        self.nerf_controller = NerfController(NERF_CONTROLLER_URL)
+        self.gun_config = self.load_gun_config()
 
     async def event_token_expired(self):
         print("Token expired, attempting to refresh...")
@@ -141,35 +142,42 @@ class NerfGunBot(commands.Bot):
             return
 
         # Check if user is subscribed
-        if not await self.check_subscription(ctx.author):
-            await ctx.send(f"{username} is not a subscriber and cannot use the !fire command.")
-            await ctx.send(f"/w {username} you are not a subscriber")
-            return
+        channel_owner = username == TWITCH_CHANNEL_NAME
+        if not channel_owner:
+        
+            if not await self.check_subscription(ctx.author):
+                await ctx.send(f"{username} is not a subscriber and cannot use the !fire command.")
+                await ctx.send(f"/w {username} you are not a subscriber")
+                return
 
-        subscription_level = await self.get_subscription_level(ctx.author)
-        user_data = await self.fetch_or_create_user_data(username, subscription_level)
+            subscription_level = await self.get_subscription_level(ctx.author)
+            user_data = await self.fetch_or_create_user_data(username, subscription_level)
 
-        if user_data is None:
-            await ctx.send(f"Failed to fetch or create data for {username}.")
-            return
+            if user_data is None:
+                await ctx.send(f"Failed to fetch or create data for {username}.")
+                return
 
-        current_credits = user_data["current_credits"]
-        credits_per_shot = self.get_credits_per_shot(subscription_level)
+            current_credits = user_data["current_credits"]
+            credits_per_shot = self.get_credits_per_shot(subscription_level)
 
-        total_cost = credits_per_shot * z
-        if current_credits < total_cost:
-            await ctx.send(
-                f"{username} doesn't have enough credits. Required: {total_cost}, Available: {current_credits}"
-            )
-            return
+            total_cost = credits_per_shot * z
+            if current_credits < total_cost:
+                await ctx.send(
+                    f"{username} doesn't have enough credits. Required: {total_cost}, Available: {current_credits}"
+                )
+                return
 
-        # Perform the fire action
-        shots_fired = self.do_fire(x, y, z)
+            # Perform the fire action
+            shots_fired = self.do_fire(x, y, z)
 
-        # Update user credits
-        credits_used = shots_fired * credits_per_shot
-        remaining_credits = current_credits - credits_used
-        await self.update_user_credits(username, remaining_credits)
+            # Update user credits
+            credits_used = shots_fired * credits_per_shot
+            remaining_credits = current_credits - credits_used
+            await self.update_user_credits(username, remaining_credits)
+        else:
+       # Perform the fire action
+            shots_fired = self.do_fire(x, y, z)
+            remaining_credits = 'unlimited'
 
         # Send messages
         await ctx.send(f"{username} fired {shots_fired} shots!")
@@ -198,7 +206,7 @@ class NerfGunBot(commands.Bot):
             # url = f"https://api.twitch.tv/helix/subscriptions/user?broadcaster_id={self.broadcaster_id}&user_id={user_id}"
 
             try:
-                subs = await self._http.get_channel_subscriptions(token = TWITCH_ACCESS_TOKEN, 
+                subs = await self._http.get_channel_subscriptions(token = self.token_manager.access_token, 
                                                             broadcaster_id=self.broadcaster_id,user_ids=[user_id])
                 if subs:
                     return True
