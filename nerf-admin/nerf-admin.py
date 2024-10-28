@@ -1,4 +1,4 @@
-from cgi import print_arguments
+
 import streamlit as st
 import mysql.connector
 from mysql.connector import Error
@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 # Initialize connection.
 # Uses st.cache_resource to only run once.
-#@st.cache_resource
+@st.cache_resource
 def init_connection():
     try:
         return mysql.connector.connect(

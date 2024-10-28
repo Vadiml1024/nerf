@@ -84,6 +84,11 @@ class NerfGunBot(commands.Bot):
         self.broadcaster_id = None
         self.nerf_controller = NerfController(NERF_CONTROLLER_URL)
         self.gun_config = self.load_gun_config()
+        # Cache for follower status to minimize API calls
+        self.follower_cache = {}
+        # Cache timeout (5 minutes)
+        self.cache_timeout = 300
+         
 
     async def event_token_expired(self):
         print("Token expired, attempting to refresh...")
@@ -123,6 +128,37 @@ class NerfGunBot(commands.Bot):
             return
         await self.handle_commands(message)
 
+    async def check_follower_status(self, user_id: str, broadcaster_id: str) -> bool:
+        """Check if a user is following the channel, with caching"""
+        cache_key = f"{user_id}_{broadcaster_id}"
+        
+        print(f"Checking follower status for {cache_key}...")
+        # Check cache first
+        if cache_key in self.follower_cache:
+            cached_data = self.follower_cache[cache_key]
+            if datetime.now() - cached_data['timestamp'] < timedelta(seconds=self.cache_timeout):
+                return cached_data['is_following']
+        
+        try:
+            # Use TwitchIO's built-in method
+            print("Sending get_channel_followers request")
+            followers = await self._http.get_channel_followers(token = self.token_manager.access_token,
+                                                               broadcaster_id=broadcaster_id, 
+                                                               user_id=int(user_id))
+            is_following = len(followers.data) > 0
+            
+            # Update cache
+            self.follower_cache[cache_key] = {
+                'is_following': is_following,
+                'timestamp': datetime.now()
+            }
+            
+            return is_following
+            
+        except Exception as e:
+            print(f"Error checking follower status: {e}")
+            return False
+        
 
     @commands.command(name="fire")
     async def fire_command(self, ctx: commands.Context, x: int, y: int, z: int):
@@ -142,40 +178,51 @@ class NerfGunBot(commands.Bot):
             return
 
         # Check if user is subscribed
-        channel_owner = username == TWITCH_CHANNEL_NAME
+        channel_owner = False and username == TWITCH_CHANNEL_NAME
         if not channel_owner:
         
-            if not await self.check_subscription(ctx.author):
-                await ctx.send(f"{username} is not a subscriber and cannot use the !fire command.")
-                await ctx.send(f"/w {username} you are not a subscriber")
-                return
 
-            subscription_level = await self.get_subscription_level(ctx.author)
-            user_data = await self.fetch_or_create_user_data(username, subscription_level)
+        # Check if follower verification is required
+            if True or config.get('follower_required') == '1':
+                # Get channel ID from the context
+                # channel_id = ctx.channel.id
+                is_following = await self.check_follower_status(str(ctx.author.id), self.broadcaster_id)
+                
+                if not is_following:
+                    await ctx.send(f"@{ctx.author.name}, you need to be a follower to use the Nerf gun! Follow the channel and try again.")
+                    return
 
-            if user_data is None:
-                await ctx.send(f"Failed to fetch or create data for {username}.")
-                return
+                if not await self.check_subscription(ctx.author):
+                    await ctx.send(f"{username} is not a subscriber and cannot use the !fire command.")
+                    await ctx.send(f"/w {username} you are not a subscriber")
+                    return
 
-            current_credits = user_data["current_credits"]
-            credits_per_shot = self.get_credits_per_shot(subscription_level)
+                subscription_level = await self.get_subscription_level(ctx.author)
+                user_data = await self.fetch_or_create_user_data(username, subscription_level)
 
-            total_cost = credits_per_shot * z
-            if current_credits < total_cost:
-                await ctx.send(
-                    f"{username} doesn't have enough credits. Required: {total_cost}, Available: {current_credits}"
-                )
-                return
+                if user_data is None:
+                    await ctx.send(f"Failed to fetch or create data for {username}.")
+                    return
 
-            # Perform the fire action
-            shots_fired = self.do_fire(x, y, z)
+                current_credits = user_data["current_credits"]
+                credits_per_shot = self.get_credits_per_shot(subscription_level)
 
-            # Update user credits
-            credits_used = shots_fired * credits_per_shot
-            remaining_credits = current_credits - credits_used
-            await self.update_user_credits(username, remaining_credits)
+                total_cost = credits_per_shot * z
+                if current_credits < total_cost:
+                    await ctx.send(
+                        f"{username} doesn't have enough credits. Required: {total_cost}, Available: {current_credits}"
+                    )
+                    return
+
+                # Perform the fire action
+                shots_fired = self.do_fire(x, y, z)
+
+                # Update user credits
+                credits_used = shots_fired * credits_per_shot
+                remaining_credits = current_credits - credits_used
+                await self.update_user_credits(username, remaining_credits)
         else:
-       # Perform the fire action
+            # Perform the fire action
             shots_fired = self.do_fire(x, y, z)
             remaining_credits = 'unlimited'
 
