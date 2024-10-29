@@ -128,6 +128,7 @@ class NerfGunBot(commands.Bot):
             return
         await self.handle_commands(message)
 
+
     async def check_follower_status(self, user_id: str, broadcaster_id: str) -> bool:
         """Check if a user is following the channel, with caching"""
         cache_key = f"{user_id}_{broadcaster_id}"
@@ -142,7 +143,7 @@ class NerfGunBot(commands.Bot):
         try:
             # Use TwitchIO's built-in method
             print("Sending get_channel_followers request")
-            followers = await self._http.get_channel_followers(token = self.token_manager.access_token,
+            followers = await self._http.get_channel_followers( # token = self.token_manager.access_token,
                                                                broadcaster_id=broadcaster_id, 
                                                                user_id=int(user_id))
             is_following = len(followers.data) > 0
@@ -178,16 +179,20 @@ class NerfGunBot(commands.Bot):
             return
 
         # Check if user is subscribed
+        # FIXME:  temporarily fail owner check and force follwoer and subscribe checjing
         channel_owner = False and username == TWITCH_CHANNEL_NAME
         if not channel_owner:
         
 
-        # Check if follower verification is required
+            # Check if follower verification is required
+            # FIXME:  Temporary force identity check
             if True or config.get('follower_required') == '1':
                 # Get channel ID from the context
                 # channel_id = ctx.channel.id
                 is_following = await self.check_follower_status(str(ctx.author.id), self.broadcaster_id)
-                
+                # followers = await self.fetch_users(broadcaster_id = self.broadcaster_id)
+                # print(followers)
+
                 if not is_following:
                     await ctx.send(f"@{ctx.author.name}, you need to be a follower to use the Nerf gun! Follow the channel and try again.")
                     return
