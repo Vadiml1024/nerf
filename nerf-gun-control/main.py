@@ -143,10 +143,12 @@ class NerfGunBot(commands.Bot):
         try:
             # Use TwitchIO's built-in method
             print("Sending get_channel_followers request")
-            followers = await self._http.get_channel_followers( # token = self.token_manager.access_token,
-                                                               broadcaster_id=broadcaster_id, 
-                                                               user_id=int(user_id))
-            is_following = len(followers.data) > 0
+            followers = await self._http.get_channel_followers(
+                token = self.token_manager.access_token,
+                broadcaster_id=broadcaster_id, 
+                user_id=int(user_id))
+            
+            is_following = len(followers) > 0
             
             # Update cache
             self.follower_cache[cache_key] = {
@@ -233,7 +235,7 @@ class NerfGunBot(commands.Bot):
 
         # Send messages
         await ctx.send(f"{username} fired {shots_fired} shots!")
-        await ctx.send(f"/w {username} You have {remaining_credits} credits remaining.")
+        await ctx.author.send(f"You have {remaining_credits} credits remaining.")
 
     async def old_check_subscription(self, user):
 

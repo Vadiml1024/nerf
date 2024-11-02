@@ -1,4 +1,5 @@
 import os, dotenv
+from tkinter import NO
 from weakref import ref
 
 
@@ -17,6 +18,7 @@ TWITCH_ACCESS_TOKEN = None
 TWITCH_CLIENT_ID = None
 TWITCH_SECRET = None
 TWITCH_REFRESH_TOKEN = None
+APP_ACCESS_TOKEN = None
 
 
 
@@ -26,6 +28,7 @@ def load_vars():
     global MAX_HORIZONTAL,MAX_VERTICAL,MIN_HORIZONTAL,MIN_VERTICAL
     global TWITCH_CHANNEL_NAME, TWITCH_ACCESS_TOKEN, TWITCH_REFRESH_TOKEN
     global TWITCH_CLIENT_ID, TWITCH_SECRET
+    global APP_ACCESS_TOKEN
 
     dotenv.load_dotenv(override=True)
 
@@ -38,10 +41,12 @@ def load_vars():
 
 
     TWITCH_CHANNEL_NAME = os.getenv("TWITCH_CHANNEL_NAME")
-    TWITCH_ACCESS_TOKEN = os.getenv("TTG_ACCESS_TOKEN")
-    TWITCH_CLIENT_ID = os.getenv("TTG_TWITCH_BOT_CLIENT_ID")
-    TWITCH_SECRET = os.getenv("TTG_TWITCH_BOT_CLIENT_SECRET")
-    TWITCH_REFRESH_TOKEN = os.getenv("TTG_REFRESH_TOKEN")
+    TWITCH_ACCESS_TOKEN = os.getenv("BOT_USER_ACCESS_TOKEN")
+    TWITCH_CLIENT_ID = os.getenv("BOT_CLIENT_ID")
+    TWITCH_SECRET = os.getenv("BOT_CLIENT_SECRET")
+    TWITCH_REFRESH_TOKEN = os.getenv("BOT_USER_REFRESH_TOKEN")
+    APP_ACCESS_TOKEN = os.getenv("BOT_APP_ACCESS_TOKEN")
+    pass
 
 
 
@@ -49,13 +54,23 @@ def load_vars():
 
 def update_vars(access_token, refresh_token):
     with open(".env", "a") as f:
-        f.write(f"\nTTG_ACCESS_TOKEN={access_token}\n")
-        f.write(f"TTG_REFRESH_TOKEN={refresh_token}\n")
-    
+        f.write(f"\nBOT_USER_ACCESS_TOKEN={access_token}\n")
+        f.write(f"BOT_USER_REFRESH_TOKEN={refresh_token}\n")
+
     global TWITCH_ACCESS_TOKEN
     global TWITCH_REFRESH_TOKEN
     TWITCH_ACCESS_TOKEN = access_token
     TWITCH_REFRESH_TOKEN = refresh_token
+
+
+def update_app_token(app_access_token):
+    global APP_ACCESS_TOKEN
+
+    with open(".env", "a") as f:
+        f.write(f"\nBOT_APP_ACCESS_TOKEN={app_access_token}\n")
+
+    APP_ACCESS_TOKEN = app_access_token
+
 
 
 load_vars()
