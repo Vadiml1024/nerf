@@ -1,3 +1,4 @@
+from curses.ascii import SUB
 from hmac import new
 from lib2to3.btm_matcher import BottomMatcher
 from operator import ne
@@ -9,15 +10,16 @@ import asyncio
 import logging
 import requests
 from twitchio.ext import commands
-from datetime import datetime
+from datetime import datetime,timedelta
 from reqlogger import ReqLogger
 from nerf_controller import NerfController
 from twitchio.errors import AuthenticationError
 from params import *
+import aiomysql
 
 # Load environment variables
 
-
+NEED_SUBSCRIPTION = False
 
 class TokenManager:
     def __init__(self, access_token, refresh_token, client_id, client_secret):
@@ -75,7 +77,7 @@ class NerfGunBot(commands.Bot):
                 client_id=self.token_manager.client_id,
                 nick=TWITCH_CHANNEL_NAME,
                 prefix="!",
-                initial_channels=[TWITCH_CHANNEL_NAME]
+                initial_channels=[TWITCH_CHANNEL_NAME, "snipesurprise"]
             )
         self.twitch_headers = {
             "Client-ID": self.token_manager.client_id,
@@ -83,12 +85,69 @@ class NerfGunBot(commands.Bot):
         }
         self.broadcaster_id = None
         self.nerf_controller = NerfController(NERF_CONTROLLER_URL)
-        self.gun_config = self.load_gun_config()
         # Cache for follower status to minimize API calls
         self.follower_cache = {}
         # Cache timeout (5 minutes)
         self.cache_timeout = 300
-         
+
+    async def initialize_async(self):
+        await self.connect_db()
+        self.gun_config = await self.load_gun_config()
+        print(f"Gun configuration: {self.gun_config}")
+
+        # Add other initialization tasks here
+
+    async def connect_db(self):
+        self.db = await aiomysql.create_pool(
+            host=DB_HOST,
+            port=DB_PORT,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            db=DB_NAME,
+            autocommit=True
+        )
+
+    async def fetch_or_create_user_data(self, username, subscription_level):
+        query = "SELECT * FROM subscribers WHERE user_id = %s"
+        async with self.db.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(query, (username,))
+                user_data = await cur.fetchone()
+
+                if user_data:
+                    return user_data
+                else:
+                    return await self.create_new_subscriber(username, subscription_level)
+
+    async def create_new_subscriber(self, username, subscription_level):
+        new_subscriber = {
+            "user_id": username,
+            "subscription_level": subscription_level,
+            "current_credits": self.get_initial_credits(subscription_level),
+            "subscription_anniversary": datetime.utcnow().strftime("%Y-%m-%d"),
+            "last_reset_date": datetime.utcnow().strftime("%Y-%m-%d"),
+        }
+
+        query = """
+        INSERT INTO subscribers (user_id, subscription_level, current_credits, subscription_anniversary, last_reset_date)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+
+        try:
+            async with self.db.acquire() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(query, (
+                        new_subscriber["user_id"],
+                        new_subscriber["subscription_level"],
+                        new_subscriber["current_credits"],
+                        new_subscriber["subscription_anniversary"],
+                        new_subscriber["last_reset_date"]
+                    ))
+                    return new_subscriber
+        except Exception as e:
+            print(f"Error creating new subscriber: {e}")
+            return None
+        
 
     async def event_token_expired(self):
         print("Token expired, attempting to refresh...")
@@ -103,21 +162,39 @@ class NerfGunBot(commands.Bot):
             return None
     
 
-    def load_gun_config(self):
-        if WORDPRESS_API_URL:
-            try:
-                response = requests.get(f"{WORDPRESS_API_URL}/config")
-                return response.json()
-            except requests.RequestException as e:
-                print(f"Error loading gun config: {e}")
+    async def load_gun_config(self):
+        query = "SELECT * FROM gun_config LIMIT 1"
+        try:
+            async with self.db.acquire() as conn:
+                async with conn.cursor(aiomysql.DictCursor) as cur:
+                    await cur.execute(query)
+                    config = await cur.fetchone()
+                    if config:
+                        return {
+                            "min_horizontal": config["min_horizontal"],
+                            "max_horizontal": config["max_horizontal"],
+                            "min_vertical": config["min_vertical"],
+                            "max_vertical": config["max_vertical"],
+                        }
+                    else:
+                        print("No gun configuration found in the database. Using default configuration.")
+                        return {
+                                "min_horizontal": MIN_HORIZONTAL,
+                                "max_horizontal": MAX_HORIZONTAL,
+                                "min_vertical": MIN_VERTICAL,
+                                "max_vertical": MAX_VERTICAL,
+                            }
+
+        except Exception as e:
+            print(f"Error loading gun config from database: {e}")
+            return {
+                        "min_horizontal": MIN_HORIZONTAL,
+                        "max_horizontal": MAX_HORIZONTAL,
+                        "min_vertical": MIN_VERTICAL,
+                        "max_vertical": MAX_VERTICAL,
+                    }
         
-        print("Using default gun configuration")
-        return {
-            "min_horizontal": MIN_HORIZONTAL,
-            "max_horizontal": MAX_HORIZONTAL,
-            "min_vertical": MIN_VERTICAL,
-            "max_vertical": MAX_VERTICAL,
-        }
+
 
     async def event_ready(self):
         print(f"Logged in as | {self.nick}")
@@ -135,7 +212,7 @@ class NerfGunBot(commands.Bot):
         
         print(f"Checking follower status for {cache_key}...")
         # Check cache first
-        if cache_key in self.follower_cache:
+        if False and (cache_key in self.follower_cache):
             cached_data = self.follower_cache[cache_key]
             if datetime.now() - cached_data['timestamp'] < timedelta(seconds=self.cache_timeout):
                 return cached_data['is_following']
@@ -166,6 +243,8 @@ class NerfGunBot(commands.Bot):
     @commands.command(name="fire")
     async def fire_command(self, ctx: commands.Context, x: int, y: int, z: int):
         username = ctx.author.name
+        bcaster_id = ctx.message.tags.get('room-id')
+
 
         # Check angle limits
         if (
@@ -191,7 +270,7 @@ class NerfGunBot(commands.Bot):
             if True or config.get('follower_required') == '1':
                 # Get channel ID from the context
                 # channel_id = ctx.channel.id
-                is_following = await self.check_follower_status(str(ctx.author.id), self.broadcaster_id)
+                is_following = await self.check_follower_status(str(ctx.author.id), bcaster_id)
                 # followers = await self.fetch_users(broadcaster_id = self.broadcaster_id)
                 # print(followers)
 
@@ -199,13 +278,18 @@ class NerfGunBot(commands.Bot):
                     await ctx.send(f"@{ctx.author.name}, you need to be a follower to use the Nerf gun! Follow the channel and try again.")
                     return
 
-                if not await self.check_subscription(ctx.author):
-                    await ctx.send(f"{username} is not a subscriber and cannot use the !fire command.")
-                    await ctx.send(f"/w {username} you are not a subscriber")
-                    return
+                if NEED_SUBSCRIPTION:
+                    if not await self.check_subscription(ctx.author):
+                        await ctx.send(f"{username} is not a subscriber and cannot use the !fire command.")
+                        await ctx.send(f"/w {username} you are not a subscriber")
+                        return
 
-                subscription_level = await self.get_subscription_level(ctx.author)
-                user_data = await self.fetch_or_create_user_data(username, subscription_level)
+                    subscription_level = await self.get_subscription_level(ctx.author)
+                    user_data = await self.fetch_or_create_user_data(username, subscription_level)
+                else:
+                    subscription_level = 0
+                    user_data = await self.fetch_or_create_user_data(username, subscription_level)
+ 
 
                 if user_data is None:
                     await ctx.send(f"Failed to fetch or create data for {username}.")
@@ -303,8 +387,6 @@ class NerfGunBot(commands.Bot):
             return None
 
     async def get_user_id(self, username):
-
-
         try:
             users = await self.fetch_users(names=[ username ])
             return users[0].id
@@ -313,8 +395,48 @@ class NerfGunBot(commands.Bot):
             return None
 
 
+    def get_initial_credits(self, subscription_level):
+        credits = {0: 5, 1: 100, 2: 200, 3: 300}
+        return credits.get(subscription_level, 5)
 
-    async def fetch_or_create_user_data(self, username, subscription_level):
+    def get_credits_per_shot(self, subscription_level):
+        credits = {0: 1, 1: 10, 2: 8, 3: 6}
+        return credits.get(subscription_level, 1)
+
+    def do_fire(self, x, y, z):
+        # This function should communicate with the GUNCTRL system
+        # For now, we'll just print the firing details and return the number of shots
+        print(f"Firing: x={x}, y={y}, z={z}")
+        return z
+
+    async def update_user_credits(self, user_id, new_credits):
+        query = """
+        UPDATE subscribers
+        SET current_credits = %s
+        WHERE user_id = %s
+        """
+
+        try:
+            async with self.db.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(query, (new_credits, user_id))
+                    await conn.commit()  # Commit the transaction
+                    return True
+        except Exception as e:
+            print(f"Error updating user credits: {e}")
+            return False
+
+
+    async def wp_update_user_credits(self, username, new_credits):
+        try:
+            requests.put(
+                f"{WORDPRESS_API_URL}/subscribers?user_id={username}",
+                json={"current_credits": new_credits},
+            )
+        except requests.RequestException as e:
+            print(f"Error updating user credits: {e}")
+
+    async def wp_fetch_or_create_user_data(self, username, subscription_level):
         try:
             response = requests.get(f"{WORDPRESS_API_URL}/subscribers?user_id={username}")
             users = response.json()
@@ -322,12 +444,13 @@ class NerfGunBot(commands.Bot):
             if users:
                 return users[0]
             else:
-                return await self.create_new_subscriber(username, subscription_level)
+                return await self.wp_create_new_subscriber(username, subscription_level)
         except requests.RequestException as e:
             print(f"Error fetching user data: {e}")
             return None
 
-    async def create_new_subscriber(self, username, subscription_level):
+
+    async def wp_create_new_subscriber(self, username, subscription_level):
         new_subscriber = {
             "user_id": username,
             "subscription_level": subscription_level,
@@ -342,33 +465,26 @@ class NerfGunBot(commands.Bot):
             print(f"Error creating new subscriber: {e}")
             return None
 
-    def get_initial_credits(self, subscription_level):
-        credits = {1: 100, 2: 200, 3: 300}
-        return credits.get(subscription_level, 100)
-
-    def get_credits_per_shot(self, subscription_level):
-        credits = {1: 10, 2: 8, 3: 6}
-        return credits.get(subscription_level, 10)
-
-    def do_fire(self, x, y, z):
-        # This function should communicate with the GUNCTRL system
-        # For now, we'll just print the firing details and return the number of shots
-        print(f"Firing: x={x}, y={y}, z={z}")
-        return z
-
-    async def update_user_credits(self, username, new_credits):
-        try:
-            requests.put(
-                f"{WORDPRESS_API_URL}/subscribers?user_id={username}",
-                json={"current_credits": new_credits},
-            )
-        except requests.RequestException as e:
-            print(f"Error updating user credits: {e}")
-
+    def wp_load_gun_config(self):
+        if WORDPRESS_API_URL:
+            try:
+                response = requests.get(f"{WORDPRESS_API_URL}/config")
+                return response.json()
+            except requests.RequestException as e:
+                print(f"Error loading gun config: {e}")
+        
+        print("Using default gun configuration")
+        return {
+            "min_horizontal": MIN_HORIZONTAL,
+            "max_horizontal": MAX_HORIZONTAL,
+            "min_vertical": MIN_VERTICAL,
+            "max_vertical": MAX_VERTICAL,
+        }
 
        
 async def main():
     bot = NerfGunBot()
+    await bot.initialize_async()
     try:
         await bot.start()
     except AuthenticationError:

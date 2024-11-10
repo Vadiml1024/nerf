@@ -20,6 +20,12 @@ TWITCH_SECRET = None
 TWITCH_REFRESH_TOKEN = None
 APP_ACCESS_TOKEN = None
 
+DB_HOST = None
+DB_USER = None
+DB_PASSWORD = None
+DB_NAME = None
+DB_PORT = None
+
 
 
 # Configuration
@@ -29,8 +35,16 @@ def load_vars():
     global TWITCH_CHANNEL_NAME, TWITCH_ACCESS_TOKEN, TWITCH_REFRESH_TOKEN
     global TWITCH_CLIENT_ID, TWITCH_SECRET
     global APP_ACCESS_TOKEN
+    global DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT
 
     dotenv.load_dotenv(override=True)
+
+    DB_HOST = os.getenv("DB_HOST")
+    DB_USER = os.getenv("DB_USER")
+    DB_PASSWORD = os.getenv("DB_PASSWORD")
+    DB_NAME = os.getenv("DB_NAME")
+    DB_PORT = int(os.getenv("DB_PORT", 3306))
+    DB_NAME = os.getenv("DB_NAME")
 
     WORDPRESS_API_URL = os.getenv("WORDPRESS_API_URL")
     NERF_CONTROLLER_URL = os.getenv("NERF_CONTROLLER_URL", "http://localhost:5555")
