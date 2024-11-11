@@ -4,18 +4,26 @@ import mysql.connector
 from mysql.connector import Error
 import pandas as pd
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+from os import getenv
 
 # Initialize connection.
 # Uses st.cache_resource to only run once.
 @st.cache_resource
 def init_connection():
     try:
+        load_dotenv()
+        db_host = getenv('DB_HOST')
+        db_port = getenv('DB_PORT', 3306)   
+        db_name = getenv('DB_NAME')
+        db_user = getenv('DB_USER')
+        db_pass = getenv('DB_PASSWORD')
         return mysql.connector.connect(
-            host='localhost',  # Change this to your Docker container's IP if needed
-            port=3306,  # Specify the port if it's not the default
-            database='nerfbot_db',
-            user='root',
-            password='rootpass'
+            host=db_host,  # Change this to your Docker container's IP if needed
+            port=int(db_port),  # Specify the port if it's not the default
+            database=db_name,
+            user=db_user,
+            password=db_pass
 #            auth_plugin='mysql_native_password'
         )
     except Error as e:
