@@ -1,11 +1,7 @@
-from curses.ascii import SUB
-from hmac import new
+
 from lib2to3.btm_matcher import BottomMatcher
 from operator import ne
 import aiohttp
-import os
-from pydoc import cli
-import sys
 import asyncio
 import logging
 import requests
