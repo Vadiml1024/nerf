@@ -11,7 +11,8 @@ CREATE TABLE subscription_levels (
 
 -- Insert default subscription levels
 INSERT INTO subscription_levels (subscription_level, max_credits_per_day, credits_per_shot)
-VALUES 
+VALUES
+    (0, 5, 1), 
     (1, 100, 10),
     (2, 200, 8),
     (3, 300, 6);
