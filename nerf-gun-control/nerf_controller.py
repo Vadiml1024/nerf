@@ -11,8 +11,10 @@ class NerfController:
         try:
             response = requests.get(url, params=params)
             response.raise_for_status()
+            print("Gun response: ", response.text)
             return response.text
         except Exception as e:
+            print("Gun Error: ", e)
             return f"Error: {str(e)}"
 
     def stop(self):
