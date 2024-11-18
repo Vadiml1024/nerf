@@ -49,7 +49,7 @@ class TokenManager:
                    
                     return True
                 else:
-                    print(f"Failed to refresh token: {await resp.text()}")
+                    print(f"Failed to refresh token: {await resp.text()} for client_id: {self.client_id}")
                     return False
 
     def update_bot_token(self, bot):
@@ -403,6 +403,7 @@ class NerfGunBot(commands.Bot):
         # This function should communicate with the GUNCTRL system
         # For now, we'll just print the firing details and return the number of shots
         print(f"Firing: x={x}, y={y}, z={z}")
+        self.nerf_controller.fire(x, y, z)
         return z
 
     async def update_user_credits(self, user_id, new_credits):
@@ -495,6 +496,7 @@ async def main():
             print("Failed to refresh token. Please check your Twitch credentials.")
     except Exception as e:
         print(f"An error occurred: {e}")
+        print(f"BOT Client Id: {TWITCH_CLIENT_ID}")
     finally:
         await bot.close()
 
