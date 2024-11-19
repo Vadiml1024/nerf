@@ -13,5 +13,8 @@ for x, y in coords:
     print(f"Firing at x={x}, y={y}")
     nerf.fire(x, y, 0)
     #time.sleep(1)
-    # nerf.wait_until_idle()
+    ok, status = nerf.wait_until_idle()
+    if not ok:
+        print(f"Error: {status}")
+        break
     # time.sleep(1)

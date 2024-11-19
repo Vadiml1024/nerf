@@ -1,3 +1,4 @@
+from tkinter import NO
 import requests
 import time
 
@@ -40,11 +41,11 @@ class NerfController:
         while time.time() - start_time < timeout:
             status = self.get_status()
             if status['status'] == 'idle':
-                return True
-            elif status['status'] == 'error':
-                return False
+                return True, None
+            elif status['status'] == 'ko':
+                return False, status
             time.sleep(check_interval)
-        return False
+        return False, status
 
 # Example usage
 if __name__ == "__main__":
