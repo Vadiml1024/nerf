@@ -6,17 +6,22 @@ class NerfController:
     def __init__(self, server_url):
         self.server_url = server_url.rstrip('/')  # Remove trailing slash if present
 
-    def fire(self, x=0, y=0, shot=1):
+    def fire(self, x=0, y=0, shot=1, wait=True):
         url = f"{self.server_url}/nerf"
         params = {'x': x, 'y': y, 'shots': shot}
         try:
             response = requests.get(url, params=params)
             response.raise_for_status()
             print("Gun response: ", response.text)
-            return response.text
+            if wait:
+                ok, status = self.wait_until_idle(shots=shot)
+                return str(status)
+            return ok, status
         except Exception as e:
             print("Gun Error: ", e)
-            return f"Error: {str(e)}"
+            return False, { 
+                'status' : 'error', 'message' : str(e), 'shots' : 0 
+                }
 
     def stop(self):
         url = f"{self.server_url}/stop"
@@ -36,13 +41,16 @@ class NerfController:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    def wait_until_idle(self, timeout=30, check_interval=0.5):
+    def wait_until_idle(self, timeout=30, check_interval=0.5, shots=0):
         start_time = time.time()
         while time.time() - start_time < timeout:
             status = self.get_status()
             if status['status'] == 'idle':
-                return True, None
+                return True, status
             elif status['status'] == 'ko':
+                return False, status
+            elif status['status'] == 'error':
+                status['shots'] = 0
                 return False, status
             time.sleep(check_interval)
         return False, status

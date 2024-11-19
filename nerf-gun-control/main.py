@@ -1,6 +1,7 @@
 
 from lib2to3.btm_matcher import BottomMatcher
 from operator import ne
+import stat
 import aiohttp
 import asyncio
 import logging
@@ -403,7 +404,10 @@ class NerfGunBot(commands.Bot):
         # This function should communicate with the GUNCTRL system
         # For now, we'll just print the firing details and return the number of shots
         print(f"Firing: x={x}, y={y}, z={z}")
-        self.nerf_controller.fire(x, y, z)
+        ok, status = self.nerf_controller.fire(x, y, z, wait=True)
+        if not ok:
+            print(f"Error: {status}")
+            return status.get('shots', 0)
         return z
 
     async def update_user_credits(self, user_id, new_credits):
