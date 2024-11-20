@@ -74,7 +74,7 @@ class NerfGunBot(commands.Bot):
         super().__init__(
                 token=self.token_manager.access_token,
                 client_id=self.token_manager.client_id,
-                nick=TWITCH_CHANNEL_NAME,
+                nick=self.channel_names[0],
                 prefix="!",
                 initial_channels=self.channel_names
             )
@@ -197,7 +197,8 @@ class NerfGunBot(commands.Bot):
 
     async def event_ready(self):
         print(f"Logged in as | {self.nick}")
-        self.broadcaster_id = await self.get_user_id(TWITCH_CHANNEL_NAME)
+        # FIXME:  need to handle multiple channels
+        self.broadcaster_id = await self.get_user_id(self.channel_names[0])
 
     async def event_message(self, message):
         if message.echo:
