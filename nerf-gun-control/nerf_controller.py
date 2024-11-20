@@ -15,7 +15,7 @@ class NerfController:
             print("Gun response: ", response.text)
             if wait:
                 ok, status = self.wait_until_idle(shots=shot)
-                return str(status)
+                return ok, status
             return ok, status
         except Exception as e:
             print("Gun Error: ", e)
