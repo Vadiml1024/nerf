@@ -68,13 +68,15 @@ class NerfGunBot(commands.Bot):
             )
         else:
             self.token_manager = tokmgr
+        
+        self.channel_names = TWITCH_CHANNEL_NAME.split(",")
 
         super().__init__(
                 token=self.token_manager.access_token,
                 client_id=self.token_manager.client_id,
                 nick=TWITCH_CHANNEL_NAME,
                 prefix="!",
-                initial_channels=[TWITCH_CHANNEL_NAME, "snipesurprise"]
+                initial_channels=self.channel_names
             )
         self.twitch_headers = {
             "Client-ID": self.token_manager.client_id,
@@ -258,7 +260,7 @@ class NerfGunBot(commands.Bot):
 
         # Check if user is subscribed
         # FIXME:  temporarily fail owner check and force follwoer and subscribe checjing
-        channel_owner = False and username == TWITCH_CHANNEL_NAME
+        channel_owner = True and (username in self.channel_names)
         if not channel_owner:
         
 
