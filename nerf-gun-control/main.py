@@ -88,6 +88,10 @@ class NerfGunBot(commands.Bot):
         self.follower_cache = {}
         # Cache timeout (5 minutes)
         self.cache_timeout = 300
+        self.db = None
+        self.gun_config = None
+        # Gun is not at home position
+        self.at_home = False
 
     async def initialize_async(self):
         await self.connect_db()
@@ -408,15 +412,40 @@ class NerfGunBot(commands.Bot):
         credits = {0: 1, 1: 10, 2: 8, 3: 6}
         return credits.get(subscription_level, 1)
 
+    async def _watchdog_monitor(self):
+        WATCHDOG_TIMEOUT = self.gun_config.get('idle_timeout', 60)
+        while True:
+            await asyncio.sleep(WATCHDOG_TIMEOUT)
+            async with self._lock:
+                if (datetime.now() - self._last_shot_time).total_seconds() >= WATCHDOG_TIMEOUT:
+                    await self.return_to_home()
+
+    def return_to_home(self):
+        if not self.at_home and self.gun_config['gun_active']:
+            self.at_home = True
+            self.nerf_controller.fire(self.gun_config['home_x'], self.gun_config['home_y'], 0, False)
+
+    async def update_last_shot(self):
+        async with self._lock:
+            self._last_shot_time = datetime.now()
+
+
     def do_fire(self, x, y, z):
         # This function should communicate with the GUNCTRL system
-        # For now, we'll just print the firing details and return the number of shots
+        # Reset watchdog timer on each shot
+        if not hasattr(self, '_last_shot_time'):
+            self._lock = asyncio.Lock()
+            self._last_shot_time = datetime.now()
+            self._watchdog_task = asyncio.create_task(self._watchdog_monitor())
+
+        asyncio.create_task(self.update_last_shot())
+
+        # Perform the actual firing
         print(f"Firing: x={x}, y={y}, z={z}")
         ok, status = self.nerf_controller.fire(x, y, z, wait=True)
         if not ok:
             print(f"Error: {status}")
-            return status.get('shots', 0)
-        return z
+        return status.get('shots', 0)
 
     async def update_user_credits(self, user_id, new_credits):
         query = """
