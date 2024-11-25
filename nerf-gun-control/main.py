@@ -165,7 +165,7 @@ class NerfGunBot(commands.Bot):
         query = """
         SELECT config_key, config_value 
         FROM system_config 
-        WHERE config_key IN ('min_horizontal_angle', 'max_horizontal_angle', 'min_vertical_angle', 'max_vertical_angle')
+        WHERE config_key IN ('min_horizontal_angle', 'max_horizontal_angle', 'min_vertical_angle', 'max_vertical_angle', 'home_x', 'home_y', 'gun_active')
         """
         try:
             async with self.db.acquire() as conn:
@@ -177,7 +177,10 @@ class NerfGunBot(commands.Bot):
                             "min_horizontal": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'min_horizontal_angle'), MIN_HORIZONTAL)),
                             "max_horizontal": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'max_horizontal_angle'), MAX_HORIZONTAL)),
                             "min_vertical": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'min_vertical_angle'), MIN_VERTICAL)), 
-                            "max_vertical": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'max_vertical_angle'), MAX_VERTICAL))
+                            "max_vertical": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'max_vertical_angle'), MAX_VERTICAL)),
+                            "home_x": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'home_x'), 0)),
+                            "home_y": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'home_y'), 0)),
+                            "gun_active": next((row['config_value'] for row in config_rows if row['config_key'] == 'gun_active'), '1') == '1'
                         }
         except Exception as e:
             print(f"Error loading gun config from database: {e}")
@@ -186,6 +189,9 @@ class NerfGunBot(commands.Bot):
                         "max_horizontal": MAX_HORIZONTAL,
                         "min_vertical": MIN_VERTICAL,
                         "max_vertical": MAX_VERTICAL,
+                        "home_x": 0,
+                        "home_y": 0,
+                        "gun_active": True
                     }
         
 

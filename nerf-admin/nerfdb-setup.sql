@@ -41,9 +41,11 @@ VALUES
     ('max_horizontal_angle', '45'),
     ('min_vertical_angle', '0'),
     ('max_vertical_angle', '60'),
-    ('gun_active', '0'),
-    ('subscriber_primary_key', 'user_id');
-
+    ('gun_active', '1'),
+    ('subscriber_primary_key', 'user_id'),
+    ('home_x', '0'),
+    ('home_y', '0');
+ 
 -- Create an event to reset credits every 31 days
 DELIMITER //
 
