@@ -243,6 +243,10 @@ class NerfGunBot(commands.Bot):
 
     @commands.command(name="fire")
     async def fire_command(self, ctx: commands.Context, x: int, y: int, z: int):
+        if not self.gun_config["gun_active"]:
+            await ctx.send("The Nerf gun is currently disabled.")
+            return
+        
         username = ctx.author.name
         bcaster_id = ctx.message.tags.get('room-id')
 
