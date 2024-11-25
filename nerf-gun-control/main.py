@@ -162,28 +162,23 @@ class NerfGunBot(commands.Bot):
     
 
     async def load_gun_config(self):
-        query = "SELECT * FROM gun_config LIMIT 1"
+        query = """
+        SELECT config_key, config_value 
+        FROM system_config 
+        WHERE config_key IN ('min_horizontal_angle', 'max_horizontal_angle', 'min_vertical_angle', 'max_vertical_angle')
+        """
         try:
             async with self.db.acquire() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cur:
                     await cur.execute(query)
-                    config = await cur.fetchone()
-                    if config:
+                    config_rows = await cur.fetchall()
+                    if config_rows:
                         return {
-                            "min_horizontal": config["min_horizontal"],
-                            "max_horizontal": config["max_horizontal"],
-                            "min_vertical": config["min_vertical"],
-                            "max_vertical": config["max_vertical"],
+                            "min_horizontal": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'min_horizontal_angle'), MIN_HORIZONTAL)),
+                            "max_horizontal": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'max_horizontal_angle'), MAX_HORIZONTAL)),
+                            "min_vertical": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'min_vertical_angle'), MIN_VERTICAL)), 
+                            "max_vertical": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'max_vertical_angle'), MAX_VERTICAL))
                         }
-                    else:
-                        print("No gun configuration found in the database. Using default configuration.")
-                        return {
-                                "min_horizontal": MIN_HORIZONTAL,
-                                "max_horizontal": MAX_HORIZONTAL,
-                                "min_vertical": MIN_VERTICAL,
-                                "max_vertical": MAX_VERTICAL,
-                            }
-
         except Exception as e:
             print(f"Error loading gun config from database: {e}")
             return {
