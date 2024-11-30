@@ -161,33 +161,39 @@ def backup_database():
 
 def restore_database(backup_file):
     try:
+        # Get a fresh connection
+        conn = init_connection()
+        if conn and conn.is_connected():
+            conn.close()  # Explicitly close the connection
+
+        # Clear all Streamlit cache
+        st.cache_resource.clear()
+        st.cache_data.clear()
+
         load_dotenv()
         db_name = getenv("DB_NAME")
         db_user = getenv("DB_USER")
         db_pass = getenv("DB_PASSWORD")
-        docker_name = getenv("DB_DOCKER_NAME", "nerf-db-1")  # Add default container name
+        docker_name = getenv("DB_DOCKER_NAME", "nerf-db-1")
 
-        # Construct docker exec mysql command for restore
-        command = [
-            "docker",
-            "exec",
-            "-i",
-            docker_name,  # Use container name from env
-            "mysql",
-            f"--user={db_user}",
-            f"--password={db_pass}",
-            db_name,
-        ]
+        # Construct shell command with input redirection
+        shell_command = f'docker exec -i {docker_name} mysql --user={db_user} --password={db_pass} --force {db_name} < "{backup_file}"'
 
-        # Execute restore by piping the backup file content
-        with open(backup_file, "r") as f:
-            process = subprocess.run(command, stdin=f, capture_output=True, text=True)
+        # Execute restore using shell=True to handle redirection
+        process = subprocess.run(shell_command, shell=True, capture_output=True, text=True)
 
         if process.returncode != 0:
             return False, process.stderr
 
+        # Clear cache after restore to force new connection
+        st.cache_resource.clear()
+        st.cache_data.clear()
+
         return True, "Database restored successfully"
     except Exception as e:
+        # Ensure we clear cache even if restore fails
+        st.cache_resource.clear()
+        st.cache_data.clear()
         return False, str(e)
 
 
