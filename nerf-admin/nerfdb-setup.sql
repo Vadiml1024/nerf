@@ -44,7 +44,8 @@ VALUES
     ('gun_active', '1'),
     ('subscriber_primary_key', 'user_id'),
     ('home_x', '0'),
-    ('home_y', '0');
+    ('home_y', '0'),
+    ('idle_timeout', '300');
  
 -- Create an event to reset credits every 31 days
 DELIMITER //
