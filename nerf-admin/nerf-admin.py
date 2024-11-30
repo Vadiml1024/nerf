@@ -214,18 +214,57 @@ def set_gun_status(active):
 def main():
     st.title("NerfBot Database Management")
 
-    # Add Gun Control toggle at the top of the sidebar
+    # Add Gun Control button at the top of the sidebar
     st.sidebar.markdown("### Gun Control")
     current_status = get_gun_status()
-    gun_toggle = st.sidebar.toggle("Gun Active", value=current_status)
 
-    if gun_toggle != current_status:
-        if set_gun_status(gun_toggle):
-            st.sidebar.success("Gun status updated successfully!")
+    # Create button container with background color
+    button_container = st.sidebar.container()
+    with button_container:
+        if current_status:
+            st.markdown(
+                """
+                <style>
+                div.stButton > button {
+                    background-color: #28a745;
+                    color: white;
+                }
+                div.stButton > button:hover {
+                    background-color: #218838;
+                    color: white;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            button_text = "Gun Active"
         else:
-            st.sidebar.error("Failed to update gun status!")
-            # Revert the toggle if update failed
-            st.sidebar.toggle("Gun Active", value=current_status)
+            st.markdown(
+                """
+                <style>
+                div.stButton > button {
+                    background-color: #dc3545;
+                    color: white;
+                }
+                div.stButton > button:hover {
+                    background-color: #c82333;
+                    color: white;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            button_text = "Gun Inactive"
+
+        if st.button(button_text, key="gun_toggle", use_container_width=True):
+            new_status = not current_status
+            if set_gun_status(new_status):
+                st.sidebar.success(
+                    f"Gun {'activated' if new_status else 'deactivated'} successfully!"
+                )
+                st.rerun()
+            else:
+                st.sidebar.error("Failed to update gun status!")
 
     st.sidebar.markdown("---")  # Add separator after gun control
 
