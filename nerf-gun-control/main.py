@@ -1,4 +1,3 @@
-
 from lib2to3.btm_matcher import BottomMatcher
 from operator import ne
 import stat
@@ -7,7 +6,7 @@ import asyncio
 import logging
 import requests
 from twitchio.ext import commands
-from datetime import datetime,timedelta
+from datetime import datetime, timedelta
 from reqlogger import ReqLogger
 from nerf_controller import NerfController
 from twitchio.errors import AuthenticationError
@@ -17,6 +16,7 @@ import aiomysql
 # Load environment variables
 
 NEED_SUBSCRIPTION = False
+
 
 class TokenManager:
     def __init__(self, access_token, refresh_token, client_id, client_secret):
@@ -34,50 +34,50 @@ class TokenManager:
             "grant_type": "refresh_token",
             "refresh_token": self.refresh_token,
             "client_id": self.client_id,
-            "client_secret": self.client_secret
+            "client_secret": self.client_secret,
         }
         async with aiohttp.ClientSession() as session:
             async with session.post(url, params=args) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    self.access_token = data['access_token']
-                    if 'refresh_token' in data:
-                        self.refresh_token = data['refresh_token']
+                    self.access_token = data["access_token"]
+                    if "refresh_token" in data:
+                        self.refresh_token = data["refresh_token"]
                         update_vars(self.access_token, self.refresh_token)
                         print("Refresh token updated")
                     else:
                         print("No new refresh token provided")
-                   
+
                     return True
                 else:
-                    print(f"Failed to refresh token: {await resp.text()} for client_id: {self.client_id}")
+                    print(
+                        f"Failed to refresh token: {await resp.text()} for client_id: {self.client_id}"
+                    )
                     return False
 
     def update_bot_token(self, bot):
         bot._http.token = self.access_token
         bot.twitch_headers["Authorization"] = f"Bearer {self.access_token}"
 
+
 class NerfGunBot(commands.Bot):
-    def __init__(self, tokmgr = None):
+    def __init__(self, tokmgr=None):
         if tokmgr is None:
-                self.token_manager = TokenManager(
-                TWITCH_ACCESS_TOKEN,
-                TWITCH_REFRESH_TOKEN,
-                TWITCH_CLIENT_ID,
-                TWITCH_SECRET
+            self.token_manager = TokenManager(
+                TWITCH_ACCESS_TOKEN, TWITCH_REFRESH_TOKEN, TWITCH_CLIENT_ID, TWITCH_SECRET
             )
         else:
             self.token_manager = tokmgr
-        
+
         self.channel_names = TWITCH_CHANNEL_NAME.split(",")
 
         super().__init__(
-                token=self.token_manager.access_token,
-                client_id=self.token_manager.client_id,
-                nick=self.channel_names[0],
-                prefix="!",
-                initial_channels=self.channel_names
-            )
+            token=self.token_manager.access_token,
+            client_id=self.token_manager.client_id,
+            nick=self.channel_names[0],
+            prefix="!",
+            initial_channels=self.channel_names,
+        )
         self.twitch_headers = {
             "Client-ID": self.token_manager.client_id,
             "Authorization": f"Bearer {self.token_manager.access_token}",
@@ -107,7 +107,7 @@ class NerfGunBot(commands.Bot):
             user=DB_USER,
             password=DB_PASSWORD,
             db=DB_NAME,
-            autocommit=True
+            autocommit=True,
         )
 
     async def fetch_or_create_user_data(self, username, subscription_level):
@@ -139,18 +139,20 @@ class NerfGunBot(commands.Bot):
         try:
             async with self.db.acquire() as conn:
                 async with conn.cursor() as cur:
-                    await cur.execute(query, (
-                        new_subscriber["user_id"],
-                        new_subscriber["subscription_level"],
-                        new_subscriber["current_credits"],
-                        new_subscriber["subscription_anniversary"],
-                        new_subscriber["last_reset_date"]
-                    ))
+                    await cur.execute(
+                        query,
+                        (
+                            new_subscriber["user_id"],
+                            new_subscriber["subscription_level"],
+                            new_subscriber["current_credits"],
+                            new_subscriber["subscription_anniversary"],
+                            new_subscriber["last_reset_date"],
+                        ),
+                    )
                     return new_subscriber
         except Exception as e:
             print(f"Error creating new subscriber: {e}")
             return None
-        
 
     async def event_token_expired(self):
         print("Token expired, attempting to refresh...")
@@ -163,13 +165,12 @@ class NerfGunBot(commands.Bot):
         else:
             print("Failed to refresh token")
             return None
-    
 
     async def load_gun_config(self):
         query = """
         SELECT config_key, config_value 
         FROM system_config 
-        WHERE config_key IN ('min_horizontal_angle', 'max_horizontal_angle', 'min_vertical_angle', 'max_vertical_angle', 'home_x', 'home_y', 'gun_active')
+        WHERE config_key IN ('min_horizontal_angle', 'max_horizontal_angle', 'min_vertical_angle', 'max_vertical_angle', 'home_x', 'home_y', 'gun_active', 'idle_timeout')
         """
         try:
             async with self.db.acquire() as conn:
@@ -178,27 +179,98 @@ class NerfGunBot(commands.Bot):
                     config_rows = await cur.fetchall()
                     if config_rows:
                         return {
-                            "min_horizontal": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'min_horizontal_angle'), MIN_HORIZONTAL)),
-                            "max_horizontal": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'max_horizontal_angle'), MAX_HORIZONTAL)),
-                            "min_vertical": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'min_vertical_angle'), MIN_VERTICAL)), 
-                            "max_vertical": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'max_vertical_angle'), MAX_VERTICAL)),
-                            "home_x": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'home_x'), 0)),
-                            "home_y": int(next((row['config_value'] for row in config_rows if row['config_key'] == 'home_y'), 0)),
-                            "gun_active": next((row['config_value'] for row in config_rows if row['config_key'] == 'gun_active'), '1') == '1'
+                            "min_horizontal": int(
+                                next(
+                                    (
+                                        row["config_value"]
+                                        for row in config_rows
+                                        if row["config_key"] == "min_horizontal_angle"
+                                    ),
+                                    MIN_HORIZONTAL,
+                                )
+                            ),
+                            "max_horizontal": int(
+                                next(
+                                    (
+                                        row["config_value"]
+                                        for row in config_rows
+                                        if row["config_key"] == "max_horizontal_angle"
+                                    ),
+                                    MAX_HORIZONTAL,
+                                )
+                            ),
+                            "min_vertical": int(
+                                next(
+                                    (
+                                        row["config_value"]
+                                        for row in config_rows
+                                        if row["config_key"] == "min_vertical_angle"
+                                    ),
+                                    MIN_VERTICAL,
+                                )
+                            ),
+                            "max_vertical": int(
+                                next(
+                                    (
+                                        row["config_value"]
+                                        for row in config_rows
+                                        if row["config_key"] == "max_vertical_angle"
+                                    ),
+                                    MAX_VERTICAL,
+                                )
+                            ),
+                            "home_x": int(
+                                next(
+                                    (
+                                        row["config_value"]
+                                        for row in config_rows
+                                        if row["config_key"] == "home_x"
+                                    ),
+                                    0,
+                                )
+                            ),
+                            "home_y": int(
+                                next(
+                                    (
+                                        row["config_value"]
+                                        for row in config_rows
+                                        if row["config_key"] == "home_y"
+                                    ),
+                                    0,
+                                )
+                            ),
+                            "gun_active": next(
+                                (
+                                    row["config_value"]
+                                    for row in config_rows
+                                    if row["config_key"] == "gun_active"
+                                ),
+                                "1",
+                            )
+                            == "1",
+                            "idle_timeout": int(
+                                next(
+                                    (
+                                        row["config_value"]
+                                        for row in config_rows
+                                        if row["config_key"] == "idle_timeout"
+                                    ),
+                                    300,
+                                )
+                            ),
                         }
         except Exception as e:
             print(f"Error loading gun config from database: {e}")
             return {
-                        "min_horizontal": MIN_HORIZONTAL,
-                        "max_horizontal": MAX_HORIZONTAL,
-                        "min_vertical": MIN_VERTICAL,
-                        "max_vertical": MAX_VERTICAL,
-                        "home_x": 0,
-                        "home_y": 0,
-                        "gun_active": True
-                    }
-        
-
+                "min_horizontal": MIN_HORIZONTAL,
+                "max_horizontal": MAX_HORIZONTAL,
+                "min_vertical": MIN_VERTICAL,
+                "max_vertical": MAX_VERTICAL,
+                "home_x": 0,
+                "home_y": 0,
+                "gun_active": True,
+                "idle_timeout": 300,
+            }
 
     async def event_ready(self):
         print(f"Logged in as | {self.nick}")
@@ -210,50 +282,48 @@ class NerfGunBot(commands.Bot):
             return
         await self.handle_commands(message)
 
-
     async def check_follower_status(self, user_id: str, broadcaster_id: str) -> bool:
         """Check if a user is following the channel, with caching"""
         cache_key = f"{user_id}_{broadcaster_id}"
-        
+
         print(f"Checking follower status for {cache_key}...")
         # Check cache first
         if False and (cache_key in self.follower_cache):
             cached_data = self.follower_cache[cache_key]
-            if datetime.now() - cached_data['timestamp'] < timedelta(seconds=self.cache_timeout):
-                return cached_data['is_following']
-        
+            if datetime.now() - cached_data["timestamp"] < timedelta(seconds=self.cache_timeout):
+                return cached_data["is_following"]
+
         try:
             # Use TwitchIO's built-in method
             print("Sending get_channel_followers request")
             followers = await self._http.get_channel_followers(
-                token = self.token_manager.access_token,
-                broadcaster_id=broadcaster_id, 
-                user_id=int(user_id))
-            
+                token=self.token_manager.access_token,
+                broadcaster_id=broadcaster_id,
+                user_id=int(user_id),
+            )
+
             is_following = len(followers) > 0
-            
+
             # Update cache
             self.follower_cache[cache_key] = {
-                'is_following': is_following,
-                'timestamp': datetime.now()
+                "is_following": is_following,
+                "timestamp": datetime.now(),
             }
-            
+
             return is_following
-            
+
         except Exception as e:
             print(f"Error checking follower status: {e}")
             return False
-        
 
     @commands.command(name="fire")
     async def fire_command(self, ctx: commands.Context, x: int, y: int, z: int):
         if not self.gun_config["gun_active"]:
             await ctx.send("The Nerf gun is currently disabled.")
             return
-        
-        username = ctx.author.name
-        bcaster_id = ctx.message.tags.get('room-id')
 
+        username = ctx.author.name
+        bcaster_id = ctx.message.tags.get("room-id")
 
         # Check angle limits
         if (
@@ -272,11 +342,10 @@ class NerfGunBot(commands.Bot):
         # FIXME:  temporarily fail owner check and force follwoer and subscribe checjing
         channel_owner = True and (username in self.channel_names)
         if not channel_owner:
-        
 
             # Check if follower verification is required
             # FIXME:  Temporary force identity check
-            if True or config.get('follower_required') == '1':
+            if True or config.get("follower_required") == "1":
                 # Get channel ID from the context
                 # channel_id = ctx.channel.id
                 is_following = await self.check_follower_status(str(ctx.author.id), bcaster_id)
@@ -284,12 +353,16 @@ class NerfGunBot(commands.Bot):
                 # print(followers)
 
                 if not is_following:
-                    await ctx.send(f"@{ctx.author.name}, you need to be a follower to use the Nerf gun! Follow the channel and try again.")
+                    await ctx.send(
+                        f"@{ctx.author.name}, you need to be a follower to use the Nerf gun! Follow the channel and try again."
+                    )
                     return
 
                 if NEED_SUBSCRIPTION:
                     if not await self.check_subscription(ctx.author):
-                        await ctx.send(f"{username} is not a subscriber and cannot use the !fire command.")
+                        await ctx.send(
+                            f"{username} is not a subscriber and cannot use the !fire command."
+                        )
                         await ctx.send(f"/w {username} you are not a subscriber")
                         return
 
@@ -298,7 +371,6 @@ class NerfGunBot(commands.Bot):
                 else:
                     subscription_level = 0
                     user_data = await self.fetch_or_create_user_data(username, subscription_level)
- 
 
                 if user_data is None:
                     await ctx.send(f"Failed to fetch or create data for {username}.")
@@ -324,7 +396,7 @@ class NerfGunBot(commands.Bot):
         else:
             # Perform the fire action
             shots_fired = self.do_fire(x, y, z)
-            remaining_credits = 'unlimited'
+            remaining_credits = "unlimited"
 
         # Send messages
         await ctx.send(f"{username} fired {shots_fired} shots!")
@@ -332,36 +404,38 @@ class NerfGunBot(commands.Bot):
 
     async def old_check_subscription(self, user):
 
-#        with ReqLogger(logging.DEBUG):
-            user_id = await self.get_user_id(user.name)
-            url = f"https://api.twitch.tv/helix/subscriptions/user?broadcaster_id={self.broadcaster_id}&user_id={user_id}"
+        #        with ReqLogger(logging.DEBUG):
+        user_id = await self.get_user_id(user.name)
+        url = f"https://api.twitch.tv/helix/subscriptions/user?broadcaster_id={self.broadcaster_id}&user_id={user_id}"
 
-            try:
-                response = requests.get(url, headers=self.twitch_headers)
-                response.raise_for_status()
-                data = response.json()
-                return len(data["data"]) > 0
-            except requests.RequestException as e:
-                print(f"Error checking subscription: {e}")
-                return False
-   
-   
+        try:
+            response = requests.get(url, headers=self.twitch_headers)
+            response.raise_for_status()
+            data = response.json()
+            return len(data["data"]) > 0
+        except requests.RequestException as e:
+            print(f"Error checking subscription: {e}")
+            return False
+
     async def check_subscription(self, user):
 
-#        with ReqLogger(logging.DEBUG):
-            user_id = await self.get_user_id(user.name)
-            # url = f"https://api.twitch.tv/helix/subscriptions/user?broadcaster_id={self.broadcaster_id}&user_id={user_id}"
+        #        with ReqLogger(logging.DEBUG):
+        user_id = await self.get_user_id(user.name)
+        # url = f"https://api.twitch.tv/helix/subscriptions/user?broadcaster_id={self.broadcaster_id}&user_id={user_id}"
 
-            try:
-                subs = await self._http.get_channel_subscriptions(token = self.token_manager.access_token, 
-                                                            broadcaster_id=self.broadcaster_id,user_ids=[user_id])
-                if subs:
-                    return True
-                
-                return False
-            except requests.RequestException as e:
-                print(f"Error checking subscription: {e}")
-                return False
+        try:
+            subs = await self._http.get_channel_subscriptions(
+                token=self.token_manager.access_token,
+                broadcaster_id=self.broadcaster_id,
+                user_ids=[user_id],
+            )
+            if subs:
+                return True
+
+            return False
+        except requests.RequestException as e:
+            print(f"Error checking subscription: {e}")
+            return False
 
     async def get_subscription_level(self, user):
         user_id = await self.get_user_id(user.name)
@@ -381,7 +455,6 @@ class NerfGunBot(commands.Bot):
             print(f"Error getting subscription level: {e}")
             return 0
 
-    
     async def old_get_user_id(self, username):
 
         url = f"https://api.twitch.tv/helix/users?login={username}"
@@ -397,12 +470,11 @@ class NerfGunBot(commands.Bot):
 
     async def get_user_id(self, username):
         try:
-            users = await self.fetch_users(names=[ username ])
+            users = await self.fetch_users(names=[username])
             return users[0].id
         except requests.RequestException as e:
             print(f"Error getting user ID: {e}")
             return None
-
 
     def get_initial_credits(self, subscription_level):
         credits = {0: 5, 1: 100, 2: 200, 3: 300}
@@ -413,7 +485,7 @@ class NerfGunBot(commands.Bot):
         return credits.get(subscription_level, 1)
 
     async def _watchdog_monitor(self):
-        WATCHDOG_TIMEOUT = self.gun_config.get('idle_timeout', 60)
+        WATCHDOG_TIMEOUT = self.gun_config.get("idle_timeout", 300)
         while True:
             await asyncio.sleep(WATCHDOG_TIMEOUT)
             async with self._lock:
@@ -421,19 +493,20 @@ class NerfGunBot(commands.Bot):
                     await self.return_to_home()
 
     def return_to_home(self):
-        if not self.at_home and self.gun_config['gun_active']:
+        if not self.at_home and self.gun_config["gun_active"]:
             self.at_home = True
-            self.nerf_controller.fire(self.gun_config['home_x'], self.gun_config['home_y'], 0, False)
+            self.nerf_controller.fire(
+                self.gun_config["home_x"], self.gun_config["home_y"], 0, False
+            )
 
     async def update_last_shot(self):
         async with self._lock:
             self._last_shot_time = datetime.now()
 
-
     def do_fire(self, x, y, z):
         # This function should communicate with the GUNCTRL system
         # Reset watchdog timer on each shot
-        if not hasattr(self, '_last_shot_time'):
+        if not hasattr(self, "_last_shot_time"):
             self._lock = asyncio.Lock()
             self._last_shot_time = datetime.now()
             self._watchdog_task = asyncio.create_task(self._watchdog_monitor())
@@ -445,7 +518,7 @@ class NerfGunBot(commands.Bot):
         ok, status = self.nerf_controller.fire(x, y, z, wait=True)
         if not ok:
             print(f"Error: {status}")
-        return status.get('shots', 0)
+        return status.get("shots", 0)
 
     async def update_user_credits(self, user_id, new_credits):
         query = """
@@ -463,7 +536,6 @@ class NerfGunBot(commands.Bot):
         except Exception as e:
             print(f"Error updating user credits: {e}")
             return False
-
 
     async def wp_update_user_credits(self, username, new_credits):
         try:
@@ -487,7 +559,6 @@ class NerfGunBot(commands.Bot):
             print(f"Error fetching user data: {e}")
             return None
 
-
     async def wp_create_new_subscriber(self, username, subscription_level):
         new_subscriber = {
             "user_id": username,
@@ -510,7 +581,7 @@ class NerfGunBot(commands.Bot):
                 return response.json()
             except requests.RequestException as e:
                 print(f"Error loading gun config: {e}")
-        
+
         print("Using default gun configuration")
         return {
             "min_horizontal": MIN_HORIZONTAL,
@@ -519,7 +590,7 @@ class NerfGunBot(commands.Bot):
             "max_vertical": MAX_VERTICAL,
         }
 
-       
+
 async def main():
     bot = NerfGunBot()
     await bot.initialize_async()
@@ -531,7 +602,9 @@ async def main():
         if new_token:
             bot.token_manager.update_bot_token(bot)
             print("Token refreshed. Restarting bot...")
-            bot = NerfGunBot(tokmgr=bot.token_manager)  # Create a new bot instance with the updated token
+            bot = NerfGunBot(
+                tokmgr=bot.token_manager
+            )  # Create a new bot instance with the updated token
             await bot.start()
         else:
             print("Failed to refresh token. Please check your Twitch credentials.")
@@ -540,6 +613,7 @@ async def main():
         print(f"BOT Client Id: {TWITCH_CLIENT_ID}")
     finally:
         await bot.close()
+
 
 if __name__ == "__main__":
     with ReqLogger(level=logging.DEBUG):
