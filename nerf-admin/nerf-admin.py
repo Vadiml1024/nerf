@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from os import getenv
 import os
 import subprocess
+import time
 
 
 # Initialize connection.
@@ -211,60 +212,64 @@ def set_gun_status(active):
     return execute_and_commit(query, (value,))
 
 
+@st.fragment(run_every=5)
+def show_gun_status():
+    current_status = get_gun_status()
+
+    if current_status:
+        st.markdown(
+            """
+            <style>
+            div.stButton > button {
+                background-color: #28a745;
+                color: white;
+            }
+            div.stButton > button:hover {
+                background-color: #218838;
+                color: white;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        button_text = "Gun Active"
+    else:
+        st.markdown(
+            """
+            <style>
+            div.stButton > button {
+                background-color: #dc3545;
+                color: white;
+            }
+            div.stButton > button:hover {
+                background-color: #c82333;
+                color: white;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        button_text = "Gun Inactive"
+
+    if st.button(button_text, key="gun_toggle"):
+        new_status = not current_status
+        if set_gun_status(new_status):
+            st.success(f"Gun {'activated' if new_status else 'deactivated'} successfully!")
+            st.rerun()
+        else:
+            st.error("Failed to update gun status!")
+
+
 def main():
     st.title("NerfBot Database Management")
 
+    execute_and_commit("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
     # Add Gun Control button at the top of the sidebar
     st.sidebar.markdown("### Gun Control")
-    current_status = get_gun_status()
 
-    # Create button container with background color
-    button_container = st.sidebar.container()
-    with button_container:
-        if current_status:
-            st.markdown(
-                """
-                <style>
-                div.stButton > button {
-                    background-color: #28a745;
-                    color: white;
-                }
-                div.stButton > button:hover {
-                    background-color: #218838;
-                    color: white;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
-            button_text = "Gun Active"
-        else:
-            st.markdown(
-                """
-                <style>
-                div.stButton > button {
-                    background-color: #dc3545;
-                    color: white;
-                }
-                div.stButton > button:hover {
-                    background-color: #c82333;
-                    color: white;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
-            button_text = "Gun Inactive"
-
-        if st.button(button_text, key="gun_toggle", use_container_width=True):
-            new_status = not current_status
-            if set_gun_status(new_status):
-                st.sidebar.success(
-                    f"Gun {'activated' if new_status else 'deactivated'} successfully!"
-                )
-                st.rerun()
-            else:
-                st.sidebar.error("Failed to update gun status!")
+    # Create a container in the sidebar for the gun status
+    with st.sidebar:
+        show_gun_status()
 
     st.sidebar.markdown("---")  # Add separator after gun control
 
