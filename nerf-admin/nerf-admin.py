@@ -197,8 +197,37 @@ def restore_database(backup_file):
         return False, str(e)
 
 
+def get_gun_status():
+    query = "SELECT config_value FROM system_config WHERE config_key = 'gun_active'"
+    result = run_query(query)
+    if result and result[0]:
+        return int(result[0][0]) != 0
+    return False
+
+
+def set_gun_status(active):
+    value = "1" if active else "0"
+    query = "UPDATE system_config SET config_value = %s WHERE config_key = 'gun_active'"
+    return execute_and_commit(query, (value,))
+
+
 def main():
     st.title("NerfBot Database Management")
+
+    # Add Gun Control toggle at the top of the sidebar
+    st.sidebar.markdown("### Gun Control")
+    current_status = get_gun_status()
+    gun_toggle = st.sidebar.toggle("Gun Active", value=current_status)
+
+    if gun_toggle != current_status:
+        if set_gun_status(gun_toggle):
+            st.sidebar.success("Gun status updated successfully!")
+        else:
+            st.sidebar.error("Failed to update gun status!")
+            # Revert the toggle if update failed
+            st.sidebar.toggle("Gun Active", value=current_status)
+
+    st.sidebar.markdown("---")  # Add separator after gun control
 
     # Sidebar for navigation
     table = st.sidebar.selectbox(
