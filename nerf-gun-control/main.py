@@ -1,4 +1,7 @@
+from codecs import ascii_encode
+from curses import ERR
 from lib2to3.btm_matcher import BottomMatcher
+from math import asin
 from operator import ne
 import stat
 import aiohttp
@@ -70,6 +73,7 @@ class NerfGunBot(commands.Bot):
             self.token_manager = tokmgr
 
         self.channel_names = TWITCH_CHANNEL_NAME.split(",")
+        self.gun_at_home = False
 
         super().__init__(
             token=self.token_manager.access_token,
@@ -92,6 +96,8 @@ class NerfGunBot(commands.Bot):
         self.gun_config = None
         # Gun is not at home position
         self.at_home = False
+        # Add lock for gun status
+        self._gun_status_lock = asyncio.Lock()
 
     async def initialize_async(self):
         await self.connect_db()
@@ -318,7 +324,7 @@ class NerfGunBot(commands.Bot):
 
     @commands.command(name="fire")
     async def fire_command(self, ctx: commands.Context, x: int, y: int, z: int):
-        if not self.gun_config["gun_active"]:
+        if not await self.get_gun_status():
             await ctx.send("The Nerf gun is currently disabled.")
             return
 
@@ -387,20 +393,24 @@ class NerfGunBot(commands.Bot):
                     return
 
                 # Perform the fire action
-                shots_fired = self.do_fire(x, y, z)
+                shots_fired = await self.do_fire(x, y, z)
 
-                # Update user credits
-                credits_used = shots_fired * credits_per_shot
-                remaining_credits = current_credits - credits_used
-                await self.update_user_credits(username, remaining_credits)
+                if shots_fired >= 0:
+                    # Update user credits
+                    credits_used = shots_fired * credits_per_shot
+                    remaining_credits = current_credits - credits_used
+                    await self.update_user_credits(username, remaining_credits)
         else:
             # Perform the fire action
-            shots_fired = self.do_fire(x, y, z)
+            shots_fired = await self.do_fire(x, y, z)
             remaining_credits = "unlimited"
 
-        # Send messages
-        await ctx.send(f"{username} fired {shots_fired} shots!")
-        await ctx.author.send(f"You have {remaining_credits} credits remaining.")
+        if shots_fired >= 0:
+            # Send messages
+            await ctx.send(f"{username} fired {shots_fired} shots!")
+            await ctx.author.send(f"You have {remaining_credits} credits remaining.")
+        else:
+            await ctx.send("Error shooting... Gun INACTIVE")
 
     async def old_check_subscription(self, user):
 
@@ -486,11 +496,19 @@ class NerfGunBot(commands.Bot):
 
     async def _watchdog_monitor(self):
         WATCHDOG_TIMEOUT = self.gun_config.get("idle_timeout", 300)
+        INACTIVE_GUN_TIMEOUT = 5
         while True:
-            await asyncio.sleep(WATCHDOG_TIMEOUT)
-            async with self._lock:
-                if (datetime.now() - self._last_shot_time).total_seconds() >= WATCHDOG_TIMEOUT:
-                    await self.return_to_home()
+            if await self.get_gun_status():
+                await asyncio.sleep(WATCHDOG_TIMEOUT)
+                async with self._lock:
+                    if not self.gun_at_home:
+                        continue
+                    if (datetime.now() - self._last_shot_time).total_seconds() >= WATCHDOG_TIMEOUT:
+                        await self.return_to_home()
+                        self.gun_at_home = True
+            else:
+                await asyncio.sleep(INACTIVE_GUN_TIMEOUT)
+                await self.check_gun_status()
 
     def return_to_home(self):
         if not self.at_home and self.gun_config["gun_active"]:
@@ -503,7 +521,45 @@ class NerfGunBot(commands.Bot):
         async with self._lock:
             self._last_shot_time = datetime.now()
 
-    def do_fire(self, x, y, z):
+    async def update_gun_status(self, status):
+        query = """
+        UPDATE system_config 
+        SET config_value = %s
+        WHERE config_key = 'gun_active'
+        """
+
+        try:
+            async with self.db.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(query, (1 if status else 0,))
+                    await conn.commit()
+                    await self.set_gun_status(status)  # Update local config with lock
+                    return True
+        except Exception as e:
+            print(f"Error updating gun status: {e}")
+            return False
+
+    async def check_gun_status(self):
+        query = """
+        SELECT config_value 
+        FROM system_config 
+        WHERE config_key = 'gun_active'
+        """
+        try:
+            async with self.db.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(query)
+                    result = await cursor.fetchone()
+                    if result:
+                        status = bool(int(result[0]))
+                        await self.set_gun_status(status)  # Update local config with lock
+                        return status
+                    return False
+        except Exception as e:
+            print(f"Error checking gun status: {e}")
+            return False
+
+    async def do_fire(self, x, y, z):
         # This function should communicate with the GUNCTRL system
         # Reset watchdog timer on each shot
         if not hasattr(self, "_last_shot_time"):
@@ -514,10 +570,16 @@ class NerfGunBot(commands.Bot):
         asyncio.create_task(self.update_last_shot())
 
         # Perform the actual firing
+        if not await self.check_gun_status():
+            return -1
+
         print(f"Firing: x={x}, y={y}, z={z}")
         ok, status = self.nerf_controller.fire(x, y, z, wait=True)
         if not ok:
             print(f"Error: {status}")
+            await self.update_gun_status(False)
+            return -1
+
         return status.get("shots", 0)
 
     async def update_user_credits(self, user_id, new_credits):
@@ -589,6 +651,16 @@ class NerfGunBot(commands.Bot):
             "min_vertical": MIN_VERTICAL,
             "max_vertical": MAX_VERTICAL,
         }
+
+    async def get_gun_status(self):
+        """Get gun active status with synchronization"""
+        async with self._gun_status_lock:
+            return self.gun_config.get("gun_active", False)
+
+    async def set_gun_status(self, status: bool):
+        """Set gun active status with synchronization"""
+        async with self._gun_status_lock:
+            self.gun_config["gun_active"] = status
 
 
 async def main():
