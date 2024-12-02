@@ -1,6 +1,7 @@
 from tkinter import NO
 import requests
 import time
+import json
 
 
 class NerfController:
@@ -17,7 +18,7 @@ class NerfController:
             rr = response.json()
             rm = rr.get("message", "shots:0")
             rm = "{" + rm.strip().replace(" ", ",") + "}"
-            rmdict = eval(rm)
+            rmdict = json.loads(rm)
             shots = rmdict.get("shots", 0)
 
             if wait:
