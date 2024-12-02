@@ -17,9 +17,8 @@ class NerfController:
             print("Gun response: ", response.json())
             rr = response.json()
             rm = rr.get("message", "shots:0")
-            rm = "{" + rm.strip().replace(" ", ",") + "}"
-            rmdict = json.loads(rm)
-            shots = rmdict.get("shots", 0)
+            rml = rm.split("shots:")
+            shots = int(rml[1]) if len(rml) > 1 else -1
 
             if wait:
                 ok, status = self.wait_until_idle(shots=shots)
