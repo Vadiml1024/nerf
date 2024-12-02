@@ -97,6 +97,7 @@ class NerfGunBot(commands.Bot):
         self.at_home = False
         # Add lock for gun status
         self._gun_status_lock = asyncio.Lock()
+        self.gun_config = {}
 
     async def initialize_async(self):
         await self.connect_db()
@@ -183,7 +184,7 @@ class NerfGunBot(commands.Bot):
                     await cur.execute(query)
                     config_rows = await cur.fetchall()
                     if config_rows:
-                        return {
+                        ret = {
                             "min_horizontal": int(
                                 next(
                                     (
@@ -266,7 +267,7 @@ class NerfGunBot(commands.Bot):
                         }
         except Exception as e:
             print(f"Error loading gun config from database: {e}")
-            return {
+            ret = {
                 "min_horizontal": MIN_HORIZONTAL,
                 "max_horizontal": MAX_HORIZONTAL,
                 "min_vertical": MIN_VERTICAL,
@@ -276,6 +277,9 @@ class NerfGunBot(commands.Bot):
                 "gun_active": True,
                 "idle_timeout": 300,
             }
+        finally:
+            print(f"Got config:\m{ret}")
+            return ret
 
     async def event_ready(self):
         print(f"Logged in as | {self.nick}")
