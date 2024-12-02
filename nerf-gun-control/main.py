@@ -1,5 +1,4 @@
 from codecs import ascii_encode
-from curses import ERR
 from lib2to3.btm_matcher import BottomMatcher
 from math import asin
 from operator import ne
