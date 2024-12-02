@@ -16,7 +16,7 @@ class NerfController:
             print("Gun response: ", response.json())
             rr = response.json()
             rm = rr.get("message", "shots:0")
-            rm = "{" + rm.trim().replace(" ", ",") + "}"
+            rm = "{" + rm.strip().replace(" ", ",") + "}"
             rmdict = eval(rm)
             shots = rmdict.get("shots", 0)
 
