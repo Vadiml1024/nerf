@@ -508,7 +508,6 @@ class NerfGunBot(commands.Bot):
                         continue
                     if (datetime.now() - self._last_shot_time).total_seconds() >= WATCHDOG_TIMEOUT:
                         await self.return_to_home()
-                        self.gun_at_home = True
             else:
                 await asyncio.sleep(SLEEP_TIMEOUT)
                 await self.check_gun_status()
@@ -561,6 +560,18 @@ class NerfGunBot(commands.Bot):
         except Exception as e:
             print(f"Error checking gun status: {e}")
             return False
+
+    async def kill_watchdog(self):
+        """Stop the watchdog monitoring task"""
+        if hasattr(self, "_watchdog_task"):
+            self._watchdog_task.cancel()
+            try:
+                await self._watchdog_task
+            except asyncio.CancelledError:
+                pass
+            delattr(self, "_watchdog_task")
+            delattr(self, "_last_shot_time")
+            delattr(self, "_lock")
 
     async def do_fire(self, x, y, z):
         # This function should communicate with the GUNCTRL system
@@ -676,6 +687,7 @@ async def main():
         new_token = await bot.token_manager.refresh()
         if new_token:
             bot.token_manager.update_bot_token(bot)
+            bot.kill_watchdog()
             print("Token refreshed. Restarting bot...")
             bot = NerfGunBot(
                 tokmgr=bot.token_manager
