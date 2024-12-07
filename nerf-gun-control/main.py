@@ -499,10 +499,10 @@ class NerfGunBot(commands.Bot):
 
     async def _watchdog_monitor(self):
         WATCHDOG_TIMEOUT = self.gun_config.get("idle_timeout", 300)
-        INACTIVE_GUN_TIMEOUT = 5
+        SLEEP_TIMEOUT = 5
         while True:
             if await self.get_gun_status():
-                await asyncio.sleep(WATCHDOG_TIMEOUT)
+                await asyncio.sleep(SLEEP_TIMEOUT)
                 async with self._lock:
                     if not self.gun_at_home:
                         continue
@@ -510,7 +510,7 @@ class NerfGunBot(commands.Bot):
                         await self.return_to_home()
                         self.gun_at_home = True
             else:
-                await asyncio.sleep(INACTIVE_GUN_TIMEOUT)
+                await asyncio.sleep(SLEEP_TIMEOUT)
                 await self.check_gun_status()
 
     def return_to_home(self):
@@ -680,6 +680,7 @@ async def main():
             bot = NerfGunBot(
                 tokmgr=bot.token_manager
             )  # Create a new bot instance with the updated token
+            await bot.initialize_async()
             await bot.start()
         else:
             print("Failed to refresh token. Please check your Twitch credentials.")
