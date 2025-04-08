@@ -51,13 +51,16 @@ class NerfController:
         while time.time() - start_time < timeout:
             status = self.get_status()
             if status["status"] == "idle":
-                status["shots"] = shots
+                if not ("shots" in status):
+                    status["shots"] = shots
                 return True, status
             elif status["status"] == "ko":
-                status["shots"] = 0
+                if not ("shots" in status):
+                    status["shots"] = 0
                 return False, status
             elif status["status"] == "error":
-                status["shots"] = 0
+                if not ("shots" in status):
+                    status["shots"] = 0
                 return False, status
             time.sleep(check_interval)
         return False, status
