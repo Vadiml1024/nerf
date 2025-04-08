@@ -1,5 +1,5 @@
 from codecs import ascii_encode
-from lib2to3.btm_matcher import BottomMatcher
+#from lib2to3.btm_matcher import BottomMatcher
 from math import asin
 from operator import ne
 import stat
@@ -348,7 +348,7 @@ class NerfGunBot(commands.Bot):
             return
 
         # Check if user is subscribed
-        # FIXME:  temporarily fail owner check and force follwoer and subscribe checjing
+        # FIXME:  temporarily fail owner check and force follower and subscriber checking
         channel_owner = True and (username in self.channel_names)
         if not channel_owner:
 
@@ -405,6 +405,7 @@ class NerfGunBot(commands.Bot):
                     await self.update_user_credits(username, remaining_credits)
         else:
             # Perform the fire action
+            print("Channel owner, firing without credits")
             shots_fired = await self.do_fire(x, y, z)
             remaining_credits = "unlimited"
 
