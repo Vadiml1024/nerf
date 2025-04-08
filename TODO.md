@@ -1,0 +1,2 @@
+- The limits will be between 0 and 90 and should be translated to the range acceptable by the gun.
+- Do not forget to active subscribtion verfication to allow firing
