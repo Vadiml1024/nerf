@@ -40,10 +40,13 @@ class NerfController:
     def get_status(self):
         url = f"{self.server_url}/status"
         try:
+            print("Getting status")
             response = requests.get(url)
             response.raise_for_status()
+            print("Status: ", response.json())
             return response.json()
         except Exception as e:
+            print("Error getting status: ", e)
             return {"status": "error", "message": str(e)}
 
     def wait_until_idle(self, timeout=30, check_interval=0.5, shots=0):
