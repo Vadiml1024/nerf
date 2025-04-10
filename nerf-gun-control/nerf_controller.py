@@ -49,7 +49,7 @@ class NerfController:
             print("Error getting status: ", e)
             return {"status": "error", "message": str(e)}
 
-    def wait_until_idle(self, timeout=45, check_interval=0.1, shots=0):
+    def wait_until_idle(self, timeout=45, check_interval=0.05, shots=0):
         start_time = time.time()
         while time.time() - start_time < timeout:
             status = self.get_status()
