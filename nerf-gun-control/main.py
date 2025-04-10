@@ -99,6 +99,7 @@ class NerfGunBot(commands.Bot):
         self._gun_status_lock = asyncio.Lock()
         self.gun_config = {}
 
+
     async def initialize_async(self):
         await self.connect_db()
         self.gun_config = await self.load_gun_config()
@@ -325,7 +326,11 @@ class NerfGunBot(commands.Bot):
             print(f"Error checking follower status: {e}")
             return False
 
-    @commands.command(name="fire")
+
+    async def get_prefix(self, bot, message):
+        return ['', '!']  # support both no prefix and !
+    
+    @commands.command(name="fire", aliases=["f"])
     async def fire_command(self, ctx: commands.Context, x: int, y: int, z: int):
         if not await self.get_gun_status():
             await ctx.send("The Nerf gun is currently disabled.")
