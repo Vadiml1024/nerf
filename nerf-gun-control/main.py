@@ -78,7 +78,7 @@ class NerfGunBot(commands.Bot):
             token=self.token_manager.access_token,
             client_id=self.token_manager.client_id,
             nick=self.channel_names[0],
-            prefix="!",
+            prefix=["", "!"],
             initial_channels=self.channel_names,
         )
         self.twitch_headers = {
@@ -326,9 +326,6 @@ class NerfGunBot(commands.Bot):
             print(f"Error checking follower status: {e}")
             return False
 
-
-    async def get_prefix(self, bot, message):
-        return ['', '!']  # support both no prefix and !
     
     @commands.command(name="fire", aliases=["f"])
     async def fire_command(self, ctx: commands.Context, x: int, y: int, z: int):
