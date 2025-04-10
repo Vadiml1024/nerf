@@ -78,7 +78,7 @@ class NerfGunBot(commands.Bot):
             token=self.token_manager.access_token,
             client_id=self.token_manager.client_id,
             nick=self.channel_names[0],
-            prefix=["", "!"],
+            prefix=["!"],
             initial_channels=self.channel_names,
         )
         self.twitch_headers = {
