@@ -2,6 +2,7 @@ from codecs import ascii_encode
 #from lib2to3.btm_matcher import BottomMatcher
 from math import asin
 from operator import ne
+import re
 import stat
 import aiohttp
 import asyncio
@@ -292,6 +293,23 @@ class NerfGunBot(commands.Bot):
             return
         await self.handle_commands(message)
 
+        # Custom handling for the compact command format
+        content = message.content.strip()
+        
+        # Match patterns like !!5,6,7 or !f5,6,7 or !fire5,6,7
+        compact_fire_match = re.match(r'^!(!|f|fire)(\d+),(\d+),(\d+)$', content)
+        if compact_fire_match:
+            cmd_alias, x_str, y_str, z_str = compact_fire_match.groups()
+            try:
+                x = int(x_str)
+                y = int(y_str)
+                z = int(z_str)
+                await self.do_fire_command(message.author, message, message.channel, x, y, z)
+            except ValueError:
+                await message.channel.send("Invalid parameters. Please use numbers for angles and shots.") 
+
+        return    
+
     async def check_follower_status(self, user_id: str, broadcaster_id: str) -> bool:
         """Check if a user is following the channel, with caching"""
         cache_key = f"{user_id}_{broadcaster_id}"
@@ -326,15 +344,30 @@ class NerfGunBot(commands.Bot):
             print(f"Error checking follower status: {e}")
             return False
 
-    
-    @commands.command(name="fire", aliases=["f"])
-    async def fire_command(self, ctx: commands.Context, x: int, y: int, z: int):
+
+    @commands.command(name='fire', aliases=['f', '!'])
+    async def fire_command(self, ctx: commands.Context, *, args_str=""):
+        # Process standard space-separated arguments
+        args = args_str.replace(',', ' ').split()
+        
+        if len(args) >= 3:
+            try:
+                x, y, z = int(args[0]), int(args[1]), int(args[2])
+                await self.do_fire_command(ctx.author, ctx.message, ctx.channel, x, y, z)
+                return
+            except (ValueError, IndexError):
+                pass
+        
+        await ctx.send("Usage: !fire 30 45 2  or  !f 30,45,2  or  !!30,45,2")
+
+ 
+    async def do_fire_command(self, author, message, channel, x: int, y: int, z: int):
         if not await self.get_gun_status():
-            await ctx.send("The Nerf gun is currently disabled.")
+            await channel.send("The Nerf gun is currently disabled.")
             return
 
-        username = ctx.author.name
-        bcaster_id = ctx.message.tags.get("room-id")
+        username = author.name
+        bcaster_id = message.tags.get("room-id")
 
         # Check angle limits
         if (
@@ -343,7 +376,7 @@ class NerfGunBot(commands.Bot):
             or y < self.gun_config["min_vertical"]
             or y > self.gun_config["max_vertical"]
         ):
-            await ctx.send(
+            await channel.send(
                 f"Fire command out of bounds. Horizontal: {self.gun_config['min_horizontal']} to {self.gun_config['max_horizontal']}, "
                 f"Vertical: {self.gun_config['min_vertical']} to {self.gun_config['max_vertical']}"
             )
@@ -364,17 +397,17 @@ class NerfGunBot(commands.Bot):
                 # print(followers)
 
                 if not is_following:
-                    await ctx.send(
-                        f"@{ctx.author.name}, you need to be a follower to use the Nerf gun! Follow the channel and try again."
+                    await channel.send(
+                        f"@{author.name}, you need to be a follower to use the Nerf gun! Follow the channel and try again."
                     )
                     return
 
                 if NEED_SUBSCRIPTION:
-                    if not await self.check_subscription(ctx.author):
-                        await ctx.send(
+                    if not await self.check_subscription(author):
+                        await channel.send(
                             f"{username} is not a subscriber and cannot use the !fire command."
                         )
-                        await ctx.send(f"/w {username} you are not a subscriber")
+                        await channel.send(f"/w {username} you are not a subscriber")
                         return
 
                     subscription_level = await self.get_subscription_level(ctx.author)
@@ -384,7 +417,7 @@ class NerfGunBot(commands.Bot):
                     user_data = await self.fetch_or_create_user_data(username, subscription_level)
 
                 if user_data is None:
-                    await ctx.send(f"Failed to fetch or create data for {username}.")
+                    await channel.send(f"Failed to fetch or create data for {username}.")
                     return
 
                 current_credits = user_data["current_credits"]
@@ -392,7 +425,7 @@ class NerfGunBot(commands.Bot):
 
                 total_cost = credits_per_shot * z
                 if current_credits < total_cost:
-                    await ctx.send(
+                    await channel.send(
                         f"{username} doesn't have enough credits. Required: {total_cost}, Available: {current_credits}"
                     )
                     return
@@ -413,10 +446,10 @@ class NerfGunBot(commands.Bot):
 
         if shots_fired >= 0:
             # Send messages
-            await ctx.send(f"{username} fired {shots_fired} shots!")
-            await ctx.author.send(f"You have {remaining_credits} credits remaining.")
+            await channel.send(f"{username} fired {shots_fired} shots!")
+            await author.send(f"You have {remaining_credits} credits remaining.")
         else:
-            await ctx.send("Error shooting... Gun INACTIVE")
+            await channel.send("Error shooting... Gun INACTIVE")
 
     async def old_check_subscription(self, user):
 
