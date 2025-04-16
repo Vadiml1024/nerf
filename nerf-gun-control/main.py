@@ -628,7 +628,7 @@ class NerfGunBot(commands.Bot):
         if not ok:
             print(f"Error: {status}")
             await self.update_gun_status(False)
-            return -1
+            return status.get("shots", 0) # Return the number of shots fired
 
         return status.get("shots", 0)
 
