@@ -392,7 +392,7 @@ class NerfGunBot(commands.Bot):
             if True or config.get("follower_required") == "1":
                 # Get channel ID from the context
                 # channel_id = ctx.channel.id
-                is_following = await self.check_follower_status(str(ctx.author.id), bcaster_id)
+                is_following = await self.check_follower_status(str(author.id), bcaster_id)
                 # followers = await self.fetch_users(broadcaster_id = self.broadcaster_id)
                 # print(followers)
 
