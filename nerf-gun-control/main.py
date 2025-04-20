@@ -178,7 +178,7 @@ class NerfGunBot(commands.Bot):
         query = """
         SELECT config_key, config_value 
         FROM system_config 
-        WHERE config_key IN ('min_horizontal_angle', 'max_horizontal_angle', 'min_vertical_angle', 'max_vertical_angle', 'home_x', 'home_y', 'gun_active', 'idle_timeout')
+        WHERE config_key IN ('min_horizontal_angle', 'max_horizontal_angle', 'min_vertical_angle', 'max_vertical_angle', 'home_x', 'home_y', 'gun_active', 'idle_timeout', 'horizontal_offset', 'vertical_offset')
         """
         try:
             async with self.db.acquire() as conn:
@@ -266,6 +266,26 @@ class NerfGunBot(commands.Bot):
                                     300,
                                 )
                             ),
+                            "horizontal_offset": int(
+                                next(
+                                    (
+                                        row["config_value"]
+                                        for row in config_rows
+                                        if row["config_key"] == "horizontal_offset"
+                                    ),
+                                    -45,
+                                )
+                            ),
+                            "vertical_offset": int(
+                                next(
+                                    (
+                                        row["config_value"]
+                                        for row in config_rows
+                                        if row["config_key"] == "vertical_offset"
+                                    ),
+                                    -60,
+                                )
+                            ),
                         }
         except Exception as e:
             print(f"Error loading gun config from database: {e}")
@@ -278,6 +298,8 @@ class NerfGunBot(commands.Bot):
                 "home_y": 0,
                 "gun_active": True,
                 "idle_timeout": 300,
+                "horizontal_offset": -45,
+                "vertical_offset": -60,
             }
         finally:
             print(f"Got config:\m{ret}")
@@ -369,12 +391,16 @@ class NerfGunBot(commands.Bot):
         username = author.name
         bcaster_id = message.tags.get("room-id")
 
-        # Check angle limits
+        # Apply offsets before firing
+        x_with_offset = x + self.gun_config.get("horizontal_offset", 0)
+        y_with_offset = y + self.gun_config.get("vertical_offset", 0)
+
+        # Check angle limits (with offsets applied)
         if (
-            x < self.gun_config["min_horizontal"]
-            or x > self.gun_config["max_horizontal"]
-            or y < self.gun_config["min_vertical"]
-            or y > self.gun_config["max_vertical"]
+            x_with_offset < self.gun_config["min_horizontal"]
+            or x_with_offset > self.gun_config["max_horizontal"]
+            or y_with_offset < self.gun_config["min_vertical"]
+            or y_with_offset > self.gun_config["max_vertical"]
         ):
             await channel.send(
                 f"Fire command out of bounds. Horizontal: {self.gun_config['min_horizontal']} to {self.gun_config['max_horizontal']}, "
@@ -431,7 +457,7 @@ class NerfGunBot(commands.Bot):
                     return
 
                 # Perform the fire action
-                shots_fired = await self.do_fire(x, y, z)
+                shots_fired = await self.do_fire(x_with_offset, y_with_offset, z)
 
                 if shots_fired >= 0:
                     # Update user credits
@@ -441,7 +467,7 @@ class NerfGunBot(commands.Bot):
         else:
             # Perform the fire action
             print("Channel owner, firing without credits")
-            shots_fired = await self.do_fire(x, y, z)
+            shots_fired = await self.do_fire(x_with_offset, y_with_offset, z)
             remaining_credits = "unlimited"
 
         if shots_fired >= 0:

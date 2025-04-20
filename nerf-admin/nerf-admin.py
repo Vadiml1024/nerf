@@ -307,8 +307,8 @@ def main():
         date_columns = []
     else:  # system_config
         id_column = "config_key"
-        columns = ["config_key", "config_value"]
-        display_columns = ["Config Key", "Config Value"]
+        columns = ["config_key", "config_value", "horizontal_offset", "vertical_offset"]
+        display_columns = ["Config Key", "Config Value", "Horizontal Offset", "Vertical Offset"]
         date_columns = []
 
     if action == "View":
@@ -365,9 +365,9 @@ def main():
                 if col != id_column and col != "id":
                     if col in date_columns:
                         new_values[col] = st.date_input(f"New {display_columns[i]}", value=row[i])
-                    elif "level" in col or "credits" in col:
+                    elif "level" in col or "credits" in col or col in ["horizontal_offset", "vertical_offset"]:
                         new_values[col] = st.number_input(
-                            f"New {display_columns[i]}", value=row[i], min_value=0
+                            f"New {display_columns[i]}", value=row[i], min_value=-1000, max_value=1000
                         )
                     else:
                         new_values[col] = st.text_input(f"New {display_columns[i]}", value=row[i])
@@ -405,8 +405,8 @@ def main():
                     )
                 elif col in date_columns:
                     new_values[col] = st.date_input(f"{display_columns[i]}")
-                elif "level" in col or "credits" in col:
-                    new_values[col] = st.number_input(f"{display_columns[i]}", min_value=0)
+                elif "level" in col or "credits" in col or col in ["horizontal_offset", "vertical_offset"]:
+                    new_values[col] = st.number_input(f"{display_columns[i]}", min_value=-1000, max_value=1000)
                 else:
                     new_values[col] = st.text_input(f"{display_columns[i]}")
         if st.button("Insert"):
