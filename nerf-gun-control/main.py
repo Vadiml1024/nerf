@@ -420,6 +420,9 @@ class NerfGunBot(commands.Bot):
         if not await self.get_gun_status():
             await channel.send("The Nerf gun is currently disabled.")
             return
+        if z == 0:
+            await channel.send("Can't shoot 0 shots, minumum is 1!")
+            return
 
         username = author.name
         bcaster_id = message.tags.get("room-id")
