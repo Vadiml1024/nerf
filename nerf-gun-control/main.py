@@ -448,7 +448,7 @@ class NerfGunBot(commands.Bot):
 
             # Check if follower verification is required
             # FIXME:  Temporary force identity check
-            if True or config.get("follower_required") == "1":
+            if True or self.gun_config.get("follower_required") == "1":
                 # Get channel ID from the context
                 # channel_id = ctx.channel.id
                 is_following = await self.check_follower_status(str(author.id), bcaster_id)
