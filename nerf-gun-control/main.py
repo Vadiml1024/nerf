@@ -101,11 +101,44 @@ class NerfGunBot(commands.Bot):
         self.gun_config = {}
 
 
+    async def ensure_system_config_defaults(self):
+        """
+        Ensure all required system_config rows exist in the database.
+        If any required row is missing, it will be created with a default value.
+        """
+        required_configs = {
+            "min_horizontal_angle": 0,
+            "max_horizontal_angle": 180,
+            "min_vertical_angle": 0,
+            "max_vertical_angle": 90,
+            "home_x": 90,
+            "home_y": 45,
+            "gun_active": 1,
+            "idle_timeout": 300,
+            "horizontal_offset": -45,
+            "vertical_offset": -45,
+        }
+        
+        # Fetch existing config_keys
+        query = "SELECT config_key FROM system_config"
+        async with self.db.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(query)
+                existing_keys = set(row[0] for row in await cur.fetchall())
+                
+                # Insert any missing keys with default values
+                for key, default_value in required_configs.items():
+                    if key not in existing_keys:
+                        print(f"Adding missing system_config key: {key} with default value: {default_value}")
+                        insert_query = "INSERT INTO system_config (config_key, config_value) VALUES (%s, %s)"
+                        await cur.execute(insert_query, (key, str(default_value)))
+                await conn.commit()
+
     async def initialize_async(self):
         await self.connect_db()
+        await self.ensure_system_config_defaults()  # Ensure all required config rows exist
         self.gun_config = await self.load_gun_config()
         print(f"Gun configuration: {self.gun_config}")
-
         # Add other initialization tasks here
 
     async def connect_db(self):

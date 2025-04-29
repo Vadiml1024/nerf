@@ -260,9 +260,49 @@ def show_gun_status():
             st.error("Failed to update gun status!")
 
 
+def ensure_system_config_defaults():
+    """
+    Ensure all required system_config rows exist in the database.
+    If any required row is missing, it will be created with a default value.
+    """
+    required_configs = {
+        "min_horizontal_angle": "0",
+        "max_horizontal_angle": "180",
+        "min_vertical_angle": "0", 
+        "max_vertical_angle": "90",
+        "home_x": "90",
+        "home_y": "45",
+        "gun_active": "1",
+        "idle_timeout": "300",
+        "horizontal_offset": "-45",
+        "vertical_offset": "-60",
+    }
+    
+    # Fetch existing config_keys
+    query = "SELECT config_key FROM system_config"
+    existing_keys = run_query(query)
+    
+    if existing_keys is None:  # Handle DB connection errors
+        st.error("Could not verify system configuration defaults - database connection failed")
+        return
+    
+    existing_keys = [row[0] for row in existing_keys]
+    
+    # Insert any missing keys with default values
+    for key, default_value in required_configs.items():
+        if key not in existing_keys:
+            st.info(f"Adding missing system_config key: {key} with default value: {default_value}")
+            insert_query = "INSERT INTO system_config (config_key, config_value) VALUES (%s, %s)"
+            if not execute_and_commit(insert_query, (key, default_value)):
+                st.error(f"Failed to add required system_config key: {key}")
+
+
 def main():
     st.title("NerfBot Database Management")
 
+    # Ensure all required system_config rows exist
+    ensure_system_config_defaults()
+    
     execute_and_commit("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
     # Add Gun Control button at the top of the sidebar
     st.sidebar.markdown("### Gun Control")
