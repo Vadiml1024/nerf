@@ -483,7 +483,7 @@ class NerfGunBot(commands.Bot):
                     return
 
                 current_credits = user_data["current_credits"]
-                credits_per_shot = self.get_credits_per_shot(subscription_level)
+                credits_per_shot = await self.get_credit_for_shot_from_db(subscription_level)
 
                 total_cost = credits_per_shot * z
                 if current_credits < total_cost:
@@ -594,6 +594,40 @@ class NerfGunBot(commands.Bot):
     def get_credits_per_shot(self, subscription_level):
         credits = {0: 1, 1: 10, 2: 8, 3: 6}
         return credits.get(subscription_level, 1)
+        
+    async def get_credit_for_shot_from_db(self, subscription_level):
+        """
+        Retrieve credits per shot from database based on subscription level.
+        Falls back to default values if database query fails.
+        
+        Args:
+            subscription_level: The user's subscription level (0-3)
+            
+        Returns:
+            int: Number of credits required per shot
+        """
+        query = """
+        SELECT credits_per_shot 
+        FROM subscription_levels 
+        WHERE level = %s
+        """
+        
+        try:
+            async with self.db.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(query, (subscription_level,))
+                    result = await cursor.fetchone()
+                    if result and result[0]:
+                        return int(result[0])
+                    else:
+                        # Fall back to default values if not found in DB
+                        credits = {0: 1, 1: 10, 2: 8, 3: 6}
+                        return credits.get(subscription_level, 1)
+        except Exception as e:
+            print(f"Error retrieving credits per shot from database: {e}")
+            # Fall back to default values on error
+            credits = {0: 1, 1: 10, 2: 8, 3: 6}
+            return credits.get(subscription_level, 1)
 
     async def _watchdog_monitor(self):
         WATCHDOG_TIMEOUT = self.gun_config.get("idle_timeout", 300)
