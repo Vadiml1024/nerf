@@ -8,6 +8,7 @@ import aiohttp
 import asyncio
 import logging
 import requests
+import os
 from twitchio.ext import commands
 from datetime import datetime, timedelta
 from reqlogger import ReqLogger
@@ -17,8 +18,62 @@ from params import *
 import aiomysql
 
 # Load environment variables
-
 NEED_SUBSCRIPTION = False
+
+
+# Function to initialize OBS message log file
+def initialize_obs_log():
+    """Initialize the OBS message log file with a welcome message."""
+    try:
+        # Create the log file directory if it doesn't exist
+        os.makedirs(os.path.dirname(OBS_MESSAGE_LOG_FILE), exist_ok=True)
+        
+        # Create or clear the log file and write initial messages
+        with open(OBS_MESSAGE_LOG_FILE, 'w') as f:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            f.write(f"[{timestamp}] System: Nerf Gun Status Display Initialized\n")
+            f.write(f"[{timestamp}] System: Gun status: INACTIVE\n")
+        
+        print(f"OBS message log file initialized at: {OBS_MESSAGE_LOG_FILE}")
+        return True
+    except Exception as e:
+        print(f"Error initializing OBS log file: {e}")
+        return False
+
+
+# Function to log messages for OBS display
+def log_message_for_obs(message, username="NerfBot"):
+    """
+    Write a message to the OBS log file.
+    Only logs shooting notifications and gun status messages.
+    """
+    # Filter messages to only include shooting notifications and gun status
+    if not (
+        ("fired" in message and "shots" in message) or  # Shooting notification
+        ("Gun status" in message) or                    # Gun status update
+        ("ACTIVE" in message and "INACTIVE" in message) or  # Status change message
+        ("gun is currently" in message)                 # Gun status message
+    ):
+        return  # Skip logging for other messages
+        
+    try:
+        with open(OBS_MESSAGE_LOG_FILE, 'a') as f:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            f.write(f"[{timestamp}] {username}: {message}\n")
+        
+        # Keep only the most recent messages (last 5)
+        try:
+            with open(OBS_MESSAGE_LOG_FILE, 'r') as f:
+                lines = f.readlines()
+            
+            if len(lines) > 5:
+                with open(OBS_MESSAGE_LOG_FILE, 'w') as f:
+                    f.writelines(lines[-5:])
+        except Exception as e:
+            print(f"Error trimming OBS log file: {e}")
+            
+    except Exception as e:
+        print(f"Error writing to OBS log file: {e}")
 
 
 class TokenManager:
@@ -139,6 +194,12 @@ class NerfGunBot(commands.Bot):
         await self.ensure_system_config_defaults()  # Ensure all required config rows exist
         self.gun_config = await self.load_gun_config()
         print(f"Gun configuration: {self.gun_config}")
+        
+        # Initialize OBS message log with a welcome message
+        initialize_obs_log()  # Initialize the OBS message log file
+        log_message_for_obs("Nerf Bot is now online and ready to receive commands!", "System")
+        log_message_for_obs(f"Gun active status: {'ACTIVE' if self.gun_config.get('gun_active', False) else 'INACTIVE'}", "System")
+        
         # Add other initialization tasks here
 
     async def connect_db(self):
@@ -419,9 +480,11 @@ class NerfGunBot(commands.Bot):
     async def do_fire_command(self, author, message, channel, x: int, y: int, z: int):
         if not await self.get_gun_status():
             await channel.send("The Nerf gun is currently disabled.")
+            log_message_for_obs("The Nerf gun is currently disabled.", "System")
             return
         if z == 0:
             await channel.send("Can't shoot 0 shots, minumum is 1!")
+            log_message_for_obs("Can't shoot 0 shots, minimum is 1!", "System")
             return
 
         username = author.name
@@ -438,10 +501,9 @@ class NerfGunBot(commands.Bot):
             or y_with_offset < self.gun_config["min_vertical"]
             or y_with_offset > self.gun_config["max_vertical"]
         ):
-            await channel.send(
-                f"Fire command out of bounds. Horizontal: {self.gun_config['min_horizontal']} to {self.gun_config['max_horizontal']}, "
-                f"Vertical: {self.gun_config['min_vertical']} to {self.gun_config['max_vertical']}"
-            )
+            error_msg = f"Fire command out of bounds. Horizontal: {self.gun_config['min_horizontal']} to {self.gun_config['max_horizontal']}, Vertical: {self.gun_config['min_vertical']} to {self.gun_config['max_vertical']}"
+            await channel.send(error_msg)
+            log_message_for_obs(error_msg, "System")
             return
 
         # Check if user is subscribed
@@ -459,17 +521,17 @@ class NerfGunBot(commands.Bot):
                 # print(followers)
 
                 if not is_following:
-                    await channel.send(
-                        f"@{author.name}, you need to be a follower to use the Nerf gun! Follow the channel and try again."
-                    )
+                    follow_msg = f"@{author.name}, you need to be a follower to use the Nerf gun! Follow the channel and try again."
+                    await channel.send(follow_msg)
+                    log_message_for_obs(follow_msg, "System")
                     return
 
                 if NEED_SUBSCRIPTION:
                     if not await self.check_subscription(author):
-                        await channel.send(
-                            f"{username} is not a subscriber and cannot use the !fire command."
-                        )
+                        sub_msg = f"{username} is not a subscriber and cannot use the !fire command."
+                        await channel.send(sub_msg)
                         await channel.send(f"/w {username} you are not a subscriber")
+                        log_message_for_obs(sub_msg, "System")
                         return
 
                     subscription_level = await self.get_subscription_level(ctx.author)
@@ -479,7 +541,9 @@ class NerfGunBot(commands.Bot):
                     user_data = await self.fetch_or_create_user_data(username, subscription_level)
 
                 if user_data is None:
-                    await channel.send(f"Failed to fetch or create data for {username}.")
+                    error_msg = f"Failed to fetch or create data for {username}."
+                    await channel.send(error_msg)
+                    log_message_for_obs(error_msg, "System")
                     return
 
                 current_credits = user_data["current_credits"]
@@ -487,9 +551,9 @@ class NerfGunBot(commands.Bot):
 
                 total_cost = credits_per_shot * z
                 if current_credits < total_cost:
-                    await channel.send(
-                        f"{username} doesn't have enough credits. Required: {total_cost}, Available: {current_credits}"
-                    )
+                    credit_msg = f"{username} doesn't have enough credits. Required: {total_cost}, Available: {current_credits}"
+                    await channel.send(credit_msg)
+                    log_message_for_obs(credit_msg, "System") 
                     return
 
                 # Perform the fire action
@@ -508,10 +572,17 @@ class NerfGunBot(commands.Bot):
 
         if shots_fired >= 0:
             # Send messages
-            await channel.send(f"{username} fired {shots_fired} shots!")
-            await author.send(f"You have {remaining_credits} credits remaining.")
+            fire_message = f"{username} fired {shots_fired} shots!"
+            credit_message = f"You have {remaining_credits} credits remaining."
+            await channel.send(fire_message)
+            await author.send(credit_message)
+            log_message_for_obs(fire_message, username)
+            # Also log the remaining credits info to OBS
+            log_message_for_obs(credit_message, "System")
         else:
-            await channel.send("Error shooting... Gun INACTIVE")
+            error_message = "Error shooting... Gun INACTIVE"
+            await channel.send(error_message)
+            log_message_for_obs(error_message, "System")
 
     async def old_check_subscription(self, user):
 
@@ -668,6 +739,9 @@ class NerfGunBot(commands.Bot):
                     await cursor.execute(query, (1 if status else 0,))
                     await conn.commit()
                     await self.set_gun_status(status)  # Update local config with lock
+                    # Log the status change to OBS
+                    status_message = f"Nerf Gun status changed to {'ACTIVE' if status else 'INACTIVE'}"
+                    log_message_for_obs(status_message, "System")
                     return True
         except Exception as e:
             print(f"Error updating gun status: {e}")
@@ -686,7 +760,14 @@ class NerfGunBot(commands.Bot):
                     result = await cursor.fetchone()
                     if result:
                         status = bool(int(result[0]))
+                        old_status = self.gun_config.get("gun_active", False)
                         await self.set_gun_status(status)  # Update local config with lock
+                        
+                        # Only log if the status has changed
+                        if old_status != status:
+                            status_message = f"Nerf Gun status changed to {'ACTIVE' if status else 'INACTIVE'}"
+                            log_message_for_obs(status_message, "System")
+                            
                         return status
                     return False
         except Exception as e:

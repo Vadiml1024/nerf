@@ -26,6 +26,8 @@ DB_PASSWORD = None
 DB_NAME = None
 DB_PORT = None
 
+# OBS Integration
+OBS_MESSAGE_LOG_FILE = None
 
 
 # Configuration
@@ -36,6 +38,7 @@ def load_vars():
     global TWITCH_CLIENT_ID, TWITCH_SECRET
     global APP_ACCESS_TOKEN
     global DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT
+    global OBS_MESSAGE_LOG_FILE
 
     dotenv.load_dotenv(override=True)
 
@@ -60,6 +63,9 @@ def load_vars():
     TWITCH_SECRET = os.getenv("BOT_CLIENT_SECRET")
     TWITCH_REFRESH_TOKEN = os.getenv("BOT_USER_REFRESH_TOKEN")
     APP_ACCESS_TOKEN = os.getenv("BOT_APP_ACCESS_TOKEN")
+    
+    # OBS Integration
+    OBS_MESSAGE_LOG_FILE = os.getenv('OBS_MESSAGE_LOG_FILE', '/Users/vadim/work/nerf/obs-messages.txt')
     pass
 
 
