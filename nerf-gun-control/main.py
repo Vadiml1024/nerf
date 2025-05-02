@@ -680,7 +680,7 @@ class NerfGunBot(commands.Bot):
         query = """
         SELECT credits_per_shot 
         FROM subscription_levels 
-        WHERE level = %s
+        WHERE subscription_level = %s
         """
         
         try:
