@@ -49,7 +49,8 @@ def log_message_for_obs(message, username="NerfBot"):
     """
     # Filter messages to only include shooting notifications and gun status
     if not (
-        ("fire" in message and "shots" in message) or  # Shooting notification
+        ("firing" in message and "shots" in message) or  # Shooting notification
+        ("fired" in message and "shots" in message) or  # Shooting notification
         ("Gun status" in message) or                    # Gun status update
         ("ACTIVE" in message and "INACTIVE" in message) or  # Status change message
         ("gun is currently" in message)                 # Gun status message
