@@ -49,7 +49,7 @@ VALUES
     ('horizontal_offset', '-45'),
     ('vertical_offset', '-60');
  
--- Create an event to reset credits every 31 days
+-- Create an event to reset credits daily
 DELIMITER //
 
 CREATE EVENT reset_subscriber_credits
@@ -61,8 +61,7 @@ BEGIN
     JOIN subscription_levels sl ON s.subscription_level = sl.subscription_level
     SET 
         s.current_credits = sl.max_credits_per_day,
-        s.last_reset_date = CURDATE()
-    WHERE DATEDIFF(CURDATE(), s.last_reset_date) >= 31;
+        s.last_reset_date = CURDATE();
 END //
 
 DELIMITER ;
@@ -73,5 +72,5 @@ SET GLOBAL event_scheduler = ON;
 -- Create index on subscription_anniversary for efficient credit reset
 CREATE INDEX idx_subscription_anniversary ON subscribers(subscription_anniversary);
 
--- Create index on last_reset_date for efficient credit reset
+-- Create index on last_reset_date for efficient queries
 CREATE INDEX idx_last_reset_date ON subscribers(last_reset_date);
