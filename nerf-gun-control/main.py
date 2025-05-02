@@ -557,6 +557,9 @@ class NerfGunBot(commands.Bot):
                     return
 
                 # Perform the fire action
+                fire_message = f"{username} firing {z} shots!"
+                log_message_for_obs(fire_message, username)
+ 
                 shots_fired = await self.do_fire(x_with_offset, y_with_offset, z)
 
                 if shots_fired >= 0:
@@ -567,6 +570,8 @@ class NerfGunBot(commands.Bot):
         else:
             # Perform the fire action
             print("Channel owner, firing without credits")
+            fire_message = f"{username} firing {z} shots!"
+            log_message_for_obs(fire_message, username)
             shots_fired = await self.do_fire(x_with_offset, y_with_offset, z)
             remaining_credits = "unlimited"
 
@@ -578,7 +583,7 @@ class NerfGunBot(commands.Bot):
             await author.send(credit_message)
             log_message_for_obs(fire_message, username)
             # Also log the remaining credits info to OBS
-            log_message_for_obs(credit_message, "System")
+            # log_message_for_obs(credit_message, "System")
         else:
             error_message = "Error shooting... Gun INACTIVE"
             await channel.send(error_message)
