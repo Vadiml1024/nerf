@@ -28,6 +28,21 @@ if %errorlevel% neq 0 (
 :: Activate the virtual environment
 call .venv\Scripts\activate.bat
 
+:: Check if nerf-admin is already running and kill it if found
+echo Checking for running nerf-admin instances...
+tasklist /FI "WINDOWTITLE eq *nerf-admin*" 2>NUL | find "cmd.exe" >NUL
+if %errorlevel% equ 0 (
+    echo Killing previous nerf-admin instances...
+    taskkill /FI "WINDOWTITLE eq *nerf-admin*" /F
+)
+
+:: Also check for any streamlit processes related to nerf-admin
+tasklist /FI "IMAGENAME eq python.exe" 2>NUL | find "python.exe" >NUL
+if %errorlevel% equ 0 (
+    wmic process where "commandline like '%%streamlit run nerf-admin%%'" call terminate >NUL 2>NUL
+    echo Previous nerf-admin streamlit instances terminated.
+)
+
 :: Start both applications
 start cmd /k streamlit run nerf-admin\nerf-admin.py
 start cmd /k python nerf-gun-control\main.py
