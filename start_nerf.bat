@@ -43,6 +43,21 @@ if %errorlevel% equ 0 (
     echo Previous nerf-admin streamlit instances terminated.
 )
 
+:: Check if nerf-gun-control is already running and kill it if found
+echo Checking for running nerf-gun-control instances...
+tasklist /FI "WINDOWTITLE eq *nerf-gun-control*" 2>NUL | find "cmd.exe" >NUL
+if %errorlevel% equ 0 (
+    echo Killing previous nerf-gun-control instances...
+    taskkill /FI "WINDOWTITLE eq *nerf-gun-control*" /F
+)
+
+:: Also check for any python processes running nerf-gun-control
+tasklist /FI "IMAGENAME eq python.exe" 2>NUL | find "python.exe" >NUL
+if %errorlevel% equ 0 (
+    wmic process where "commandline like '%%python nerf-gun-control\\main.py%%'" call terminate >NUL 2>NUL
+    echo Previous nerf-gun-control instances terminated.
+)
+
 :: Start both applications
 start cmd /k streamlit run nerf-admin\nerf-admin.py
 start cmd /k python nerf-gun-control\main.py
