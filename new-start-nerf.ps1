@@ -200,9 +200,16 @@ function Stop-WindowsProcesses {
         [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
         [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
         [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
-        [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out int processId);
+        [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
         [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
         [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+        
+        // Wrapper method to handle the ref/out parameter issue
+        public static uint GetProcessIdFromWindowHandle(IntPtr hWnd) {
+            uint processId = 0;
+            GetWindowThreadProcessId(hWnd, out processId);
+            return processId;
+        }
     }
 "@
 
@@ -223,7 +230,9 @@ function Stop-WindowsProcesses {
             if ($length -gt 0) {
                 $builder = New-Object System.Text.StringBuilder $length
                 [Win32]::GetWindowText($hWnd, $builder, $builder.Capacity + 1) | Out-Null
-                $null = [Win32]::GetWindowThreadProcessId($hWnd, [ref]$pid)
+                
+                # Use the wrapper method to avoid ref parameter issues
+                $pid = [Win32]::GetProcessIdFromWindowHandle($hWnd)
                 
                 # Check if window title contains our search string
                 $windowTitle = $builder.ToString()
