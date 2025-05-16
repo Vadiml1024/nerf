@@ -129,7 +129,8 @@ class NerfGunBot(commands.Bot):
             self.token_manager = tokmgr
 
         self.channel_names = TWITCH_CHANNEL_NAME.split(",")
-        self.gun_at_home = False
+        # Remove this redundant variable
+        # self.gun_at_home = False 
 
         super().__init__(
             token=self.token_manager.access_token,
@@ -150,7 +151,7 @@ class NerfGunBot(commands.Bot):
         self.cache_timeout = 300
         self.db = None
         self.gun_config = None
-        # Gun is not at home position
+        # Gun is not at home position (use just one variable)
         self.at_home = False
         # Add lock for gun status
         self._gun_status_lock = asyncio.Lock()
@@ -716,7 +717,7 @@ class NerfGunBot(commands.Bot):
             if await self.get_gun_status():
                 await asyncio.sleep(SLEEP_TIMEOUT)
                 async with self._lock:
-                    if not self.gun_at_home:
+                    if not self.at_home:
                         continue
                     if (datetime.now() - self._last_shot_time).total_seconds() >= WATCHDOG_TIMEOUT:
                         await self.return_to_home()
@@ -724,12 +725,14 @@ class NerfGunBot(commands.Bot):
                 await asyncio.sleep(SLEEP_TIMEOUT)
                 await self.check_gun_status()
 
-    def return_to_home(self):
-        if not self.at_home and self.gun_config["gun_active"]:
-            self.at_home = True
-            self.nerf_controller.fire(
-                self.gun_config["home_x"], self.gun_config["home_y"], 0, False
-            )
+    async def return_to_home(self):
+        """Return gun to home position with proper synchronization"""
+        async with self._lock:
+            if not self.at_home and self.gun_config["gun_active"]:
+                self.at_home = True
+                self.nerf_controller.fire(
+                    self.gun_config["home_x"], self.gun_config["home_y"], 0, False
+                )
 
     async def update_last_shot(self):
         async with self._lock:
