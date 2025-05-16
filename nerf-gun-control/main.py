@@ -738,11 +738,15 @@ class NerfGunBot(commands.Bot):
         """Return gun to home position with proper synchronization"""
         print("Returning to home")
         async with self._lock:
-            if not self.at_home and self.gun_config["gun_active"]:
+            if self.gun_config["gun_active"] and not self.at_home:
                 self.at_home = True
-                self.nerf_controller.fire(
+                print("Moving the gun")
+                ok, status = self.nerf_controller.fire(
                     self.gun_config["home_x"], self.gun_config["home_y"], 0, False
                 )
+                print(f"result = {ok, status}")
+            else:
+                print("Already at home or INACTIVE")
 
     async def update_last_shot(self):
         async with self._lock:
