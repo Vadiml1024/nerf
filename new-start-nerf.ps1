@@ -189,29 +189,36 @@ function Stop-WindowsProcesses {
     
     $processesFound = $false
     
+    # Define a unique type name with a GUID to avoid conflicts
+    $typeName = "Win32_NerfControl_$(New-Guid)".Replace('-','_')
+    
     # Load Windows API functions for window enumeration
-    Add-Type @"
-    using System;
-    using System.Text;
-    using System.Runtime.InteropServices;
-    public class Win32 {
-        [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
-        public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-        [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
-        [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
-        [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
-        [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-        [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-        [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    # First check if the type already exists
+    if (-not ([System.Management.Automation.PSTypeName]$typeName).Type) {
+        Add-Type -TypeDefinition @"
+        using System;
+        using System.Text;
+        using System.Runtime.InteropServices;
         
-        // Wrapper method to handle the ref/out parameter issue
-        public static uint GetProcessIdFromWindowHandle(IntPtr hWnd) {
-            uint processId = 0;
-            GetWindowThreadProcessId(hWnd, out processId);
-            return processId;
+        public class $typeName {
+            [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+            public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+            [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+            [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
+            [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+            [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+            [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+            [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+            
+            // Wrapper method to handle the ref/out parameter issue
+            public static uint GetProcessIdFromWindowHandle(IntPtr hWnd) {
+                uint processId = 0;
+                GetWindowThreadProcessId(hWnd, out processId);
+                return processId;
+            }
         }
-    }
 "@
+    }
 
     # Constants for window messages
     $WM_CLOSE = 0x0010
@@ -222,31 +229,63 @@ function Stop-WindowsProcesses {
     $matchingWindows = @()
     
     # Enumerate all windows and find any with titles containing our search string
-    [Win32]::EnumWindows({ 
-        param($hWnd, $lParam)
-
-        if ([Win32]::IsWindowVisible($hWnd)) {
-            $length = [Win32]::GetWindowTextLength($hWnd)
-            if ($length -gt 0) {
-                $builder = New-Object System.Text.StringBuilder $length
-                [Win32]::GetWindowText($hWnd, $builder, $builder.Capacity + 1) | Out-Null
+    [Reflection.Assembly]::GetAssemblies() | Where-Object { $_.GetType($typeName) } | ForEach-Object {
+        $Win32Type = $_.GetType($typeName)
+        
+        $enumWindowsMethod = $Win32Type.GetMethod('EnumWindows')
+        $getWindowTextLengthMethod = $Win32Type.GetMethod('GetWindowTextLength')
+        $getWindowTextMethod = $Win32Type.GetMethod('GetWindowText')
+        $isWindowVisibleMethod = $Win32Type.GetMethod('IsWindowVisible')
+        $getProcessIdFromWindowHandleMethod = $Win32Type.GetMethod('GetProcessIdFromWindowHandle')
+        $postMessageMethod = $Win32Type.GetMethod('PostMessage')
+        
+        $enumWindowsDelegate = [System.Delegate]::CreateDelegate(
+            $Win32Type.GetNestedType('EnumWindowsProc'),
+            { 
+                param($hWnd, $lParam)
                 
-                # Use the wrapper method to avoid ref parameter issues
-                $pid = [Win32]::GetProcessIdFromWindowHandle($hWnd)
-                
-                # Check if window title contains our search string
-                $windowTitle = $builder.ToString()
-                if ($windowTitle -like "*$WindowTitle*") {
-                    $matchingWindows += [PSCustomObject]@{
-                        Handle = $hWnd
-                        ProcessId = $pid
-                        WindowTitle = $windowTitle
+                if ($isWindowVisibleMethod.Invoke($null, @($hWnd))) {
+                    $length = $getWindowTextLengthMethod.Invoke($null, @($hWnd))
+                    if ($length -gt 0) {
+                        $builder = New-Object System.Text.StringBuilder $length
+                        $getWindowTextMethod.Invoke($null, @($hWnd, $builder, $builder.Capacity + 1)) | Out-Null
+                        
+                        # Get process ID
+                        $pid = $getProcessIdFromWindowHandleMethod.Invoke($null, @($hWnd))
+                        
+                        # Check if window title contains our search string
+                        $windowTitle = $builder.ToString()
+                        if ($windowTitle -like "*$WindowTitle*") {
+                            $matchingWindows += [PSCustomObject]@{
+                                Handle = $hWnd
+                                ProcessId = $pid
+                                WindowTitle = $windowTitle
+                                PostMessage = $postMessageMethod
+                            }
+                        }
                     }
                 }
+                return $true
+            }
+        )
+        
+        $enumWindowsMethod.Invoke($null, @($enumWindowsDelegate, [IntPtr]::Zero))
+    }
+    
+    # Fallback to a simpler method if reflection approach fails
+    if ($matchingWindows.Count -eq 0) {
+        Write-Host "Using simplified window detection..." -ForegroundColor Yellow
+        
+        # Try to find windows using Get-Process
+        $processes = Get-Process | Where-Object { $_.MainWindowTitle -like "*$WindowTitle*" }
+        foreach ($proc in $processes) {
+            $matchingWindows += [PSCustomObject]@{
+                Handle = $proc.MainWindowHandle
+                ProcessId = $proc.Id
+                WindowTitle = $proc.MainWindowTitle
             }
         }
-        return $true
-    }, [IntPtr]::Zero)
+    }
     
     # Process any matching windows
     if ($matchingWindows.Count -gt 0) {
@@ -257,22 +296,18 @@ function Stop-WindowsProcesses {
             try {
                 Write-Host "  - Closing window: '$($window.WindowTitle)' (PID: $($window.ProcessId))" -ForegroundColor Gray
                 
-                # Send WM_CLOSE message to gracefully close the window
-                $result = [Win32]::PostMessage($window.Handle, $WM_CLOSE, [IntPtr]::Zero, [IntPtr]::Zero)
-                if ($result) {
-                    Write-Host "    - Sent close message to window" -ForegroundColor Gray
-                } else {
-                    Write-Host "    - Failed to send close message, will try to kill process directly" -ForegroundColor Yellow
-                }
-                
-                # Give it a moment to close
-                Start-Sleep -Seconds 1
-                
-                # Check if process is still running and force kill if necessary
-                $process = Get-Process -Id $window.ProcessId -ErrorAction SilentlyContinue
-                if ($process) {
-                    Write-Host "    - Process still running, killing PID $($window.ProcessId)" -ForegroundColor Yellow
-                    Stop-Process -Id $window.ProcessId -Force -ErrorAction SilentlyContinue
+                # Try to close the window using CloseMainWindow first
+                $proc = Get-Process -Id $window.ProcessId -ErrorAction SilentlyContinue
+                if ($proc) {
+                    $proc.CloseMainWindow() | Out-Null
+                    Start-Sleep -Seconds 1
+                    
+                    # Check if still running
+                    $stillRunning = Get-Process -Id $window.ProcessId -ErrorAction SilentlyContinue
+                    if ($stillRunning) {
+                        Write-Host "    - Process still running, killing PID $($window.ProcessId)" -ForegroundColor Yellow
+                        Stop-Process -Id $window.ProcessId -Force -ErrorAction SilentlyContinue
+                    }
                 }
             } catch {
                 Write-Host "    - Error handling window: $_" -ForegroundColor Red
