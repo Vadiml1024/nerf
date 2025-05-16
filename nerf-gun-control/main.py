@@ -154,6 +154,9 @@ class NerfGunBot(commands.Bot):
         self.at_home = False
         # Add lock for gun status
         self._gun_status_lock = asyncio.Lock()
+        # Initialize watchdog-related attributes
+        self._lock = asyncio.Lock()
+        self._last_shot_time = datetime.now()
         self.gun_config = {}
 
 
@@ -793,13 +796,11 @@ class NerfGunBot(commands.Bot):
             delattr(self, "_lock")
 
     async def do_fire(self, x, y, z):
-        # This function should communicate with the GUNCTRL system
-        # Reset watchdog timer on each shot
-        if not hasattr(self, "_last_shot_time"):
-            self._lock = asyncio.Lock()
-            self._last_shot_time = datetime.now()
+        # Start the watchdog if it's not already running
+        if not hasattr(self, "_watchdog_task"):
             self._watchdog_task = asyncio.create_task(self._watchdog_monitor())
 
+        # Update the last shot time
         asyncio.create_task(self.update_last_shot())
 
         # Perform the actual firing
