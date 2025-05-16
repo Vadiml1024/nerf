@@ -566,7 +566,9 @@ class NerfGunBot(commands.Bot):
                 log_message_for_obs(fire_message, username)
  
                 shots_fired = await self.do_fire(x_with_offset, y_with_offset, z)
-
+                async with self._lock:
+                    self.at_home = False
+                    
                 if shots_fired >= 0:
                     # Update user credits
                     credits_used = shots_fired * credits_per_shot
