@@ -926,7 +926,7 @@ async def main():
         new_token = await bot.token_manager.refresh()
         if new_token:
             bot.token_manager.update_bot_token(bot)
-            bot.kill_watchdog()
+            await bot.kill_watchdog()
             print("Token refreshed. Restarting bot...")
             bot = NerfGunBot(
                 tokmgr=bot.token_manager
