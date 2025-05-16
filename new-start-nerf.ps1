@@ -229,7 +229,7 @@ function Stop-WindowsProcesses {
     $matchingWindows = @()
     
     # Enumerate all windows and find any with titles containing our search string
-    [Reflection.Assembly]::GetAssemblies() | Where-Object { $_.GetType($typeName) } | ForEach-Object {
+    [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetType($typeName) } | ForEach-Object {
         $Win32Type = $_.GetType($typeName)
         
         $enumWindowsMethod = $Win32Type.GetMethod('EnumWindows')
