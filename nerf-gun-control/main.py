@@ -568,7 +568,7 @@ class NerfGunBot(commands.Bot):
                 shots_fired = await self.do_fire(x_with_offset, y_with_offset, z)
                 async with self._lock:
                     self.at_home = False
-                    
+
                 if shots_fired >= 0:
                     # Update user credits
                     credits_used = shots_fired * credits_per_shot
@@ -813,7 +813,9 @@ class NerfGunBot(commands.Bot):
             return -1
 
         print(f"Firing: x={x}, y={y}, z={z}")
-        ok, status = self.nerf_controller.fire(x, y, z, wait=True)
+        async with self._lock:
+            ok, status = self.nerf_controller.fire(x, y, z, wait=True)
+        
         if not ok:
             print(f"Error: {status}")
             await self.update_gun_status(False)
