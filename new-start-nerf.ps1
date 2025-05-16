@@ -112,68 +112,99 @@ function Stop-MacOSProcesses {
     
     $processesFound = $false
     
-    # On macOS, look for PowerShell/pwsh processes that might be running our commands
-    $pwshProcesses = Get-Process -Name "pwsh" -ErrorAction SilentlyContinue
-    if ($pwshProcesses) {
-        Write-Host "Found PowerShell processes, checking if they're running our commands..." -ForegroundColor Yellow
+    # On macOS, we need to use a different approach since window titles aren't easily accessible
+    Write-Host "Searching for processes matching '$CommandPattern' on macOS..." -ForegroundColor Yellow
+    
+    # Use ps with a wider grep search to catch both direct processes and those running in any shell
+    $allMatchingProcesses = @()
+    
+    # Look for any process with our command pattern
+    $psOutput = & ps -ef | grep -i "$CommandPattern" | grep -v grep
+    
+    if ($psOutput) {
+        Write-Host "Found processes matching pattern:" -ForegroundColor Yellow
+        $processesFound = $true
         
-        # On macOS, use ps to get more detailed command information
-        $psOutput = & ps -ef | Select-String -Pattern "pwsh.*$CommandPattern"
-        
-        if ($psOutput) {
-            Write-Host "Found matching PowerShell processes, terminating:" -ForegroundColor Yellow
-            $processesFound = $true
-            
-            foreach ($line in $psOutput) {
-                try {
-                    $parts = $line -split '\s+'
-                    # PID is typically the second field
+        # Parse each process
+        foreach ($line in $psOutput) {
+            try {
+                # Extract PID (typically the 2nd field in ps output)
+                $parts = $line -split '\s+'
+                if ($parts.Count -ge 2) {
                     $pid = $parts[1]
-                    Write-Host "  - Terminating PowerShell process with PID: $pid" -ForegroundColor Gray
                     
-                    # Try graceful termination first
-                    kill $pid 2>/dev/null
-                    Start-Sleep -Milliseconds 500
-                    
-                    # Check if still running, then force kill
-                    $stillRunning = ps -p $pid -o pid= 2>/dev/null
-                    if ($stillRunning) {
-                        Write-Host "    - Process didn't terminate gracefully, force killing..." -ForegroundColor Yellow
-                        kill -9 $pid 2>/dev/null
+                    # Add to our collection
+                    $allMatchingProcesses += [PSCustomObject]@{
+                        PID = $pid
+                        CommandLine = $line
                     }
-                } catch {
-                    Write-Host "    - Error terminating process: $_" -ForegroundColor Red
+                    
+                    Write-Host "  - Found process PID $pid with command: $line" -ForegroundColor Gray
                 }
+            } catch {
+                Write-Host "  - Error parsing process line: $_" -ForegroundColor Red
+            }
+        }
+        
+        # Now terminate each process
+        foreach ($proc in $allMatchingProcesses) {
+            try {
+                Write-Host "  - Terminating process PID $($proc.PID)" -ForegroundColor Gray
+                
+                # Try graceful termination first (SIGTERM)
+                & kill $proc.PID 2>/dev/null
+                Start-Sleep -Milliseconds 500
+                
+                # Check if still running, then force kill (SIGKILL)
+                $stillRunning = & ps -p $proc.PID -o pid= 2>/dev/null
+                if ($stillRunning) {
+                    Write-Host "    - Process didn't terminate gracefully, force killing..." -ForegroundColor Yellow
+                    & kill -9 $proc.PID 2>/dev/null
+                } else {
+                    Write-Host "    - Process terminated gracefully" -ForegroundColor Green
+                }
+            } catch {
+                Write-Host "    - Error terminating process: $_" -ForegroundColor Red
             }
         }
     }
     
-    # Also check for regular processes running the command
-    $otherProcesses = & ps -ef | Select-String -Pattern "$CommandPattern" | Select-String -NotMatch "pwsh.*$CommandPattern"
+    # Also specifically look for shell processes that might be hosting our commands
+    # This catches PowerShell, bash, zsh, etc. that might be running our commands
+    $shellPatterns = @("pwsh", "bash", "zsh", "sh", "terminal")
     
-    if ($otherProcesses) {
-        Write-Host "Found other processes running our commands:" -ForegroundColor Yellow
-        $processesFound = $true
+    foreach ($shellPattern in $shellPatterns) {
+        # Find shell processes
+        $shellProcesses = & ps -ef | grep -i $shellPattern | grep -v grep
         
-        foreach ($line in $otherProcesses) {
-            try {
-                $parts = $line -split '\s+'
-                $pid = $parts[1]
-                $cmd = ($line -split '(?<=\s+\d+\s+\d+\s+\d+:\d+:\d+\s+)')[1]
-                Write-Host "  - Found PID $pid running: $cmd" -ForegroundColor Gray
-                
-                # Try graceful termination first
-                kill $pid 2>/dev/null
-                Start-Sleep -Milliseconds 500
-                
-                # Check if still running, then force kill
-                $stillRunning = ps -p $pid -o pid= 2>/dev/null
-                if ($stillRunning) {
-                    Write-Host "    - Process didn't terminate gracefully, force killing..." -ForegroundColor Yellow
-                    kill -9 $pid 2>/dev/null
+        if ($shellProcesses) {
+            foreach ($line in $shellProcesses) {
+                # If the shell process command line contains our command pattern
+                if ($line -like "*$CommandPattern*") {
+                    $processesFound = $true
+                    try {
+                        $parts = $line -split '\s+'
+                        if ($parts.Count -ge 2) {
+                            $pid = $parts[1]
+                            Write-Host "  - Found shell process ($shellPattern) with PID $pid running our command" -ForegroundColor Yellow
+                            
+                            # Try graceful termination first
+                            & kill $pid 2>/dev/null
+                            Start-Sleep -Milliseconds 500
+                            
+                            # Check if still running, then force kill
+                            $stillRunning = & ps -p $pid -o pid= 2>/dev/null
+                            if ($stillRunning) {
+                                Write-Host "    - Process didn't terminate gracefully, force killing..." -ForegroundColor Yellow
+                                & kill -9 $pid 2>/dev/null
+                            } else {
+                                Write-Host "    - Process terminated gracefully" -ForegroundColor Green
+                            }
+                        }
+                    } catch {
+                        Write-Host "    - Error handling shell process: $_" -ForegroundColor Red
+                    }
                 }
-            } catch {
-                Write-Host "    - Error terminating process: $_" -ForegroundColor Red
             }
         }
     }
@@ -189,125 +220,31 @@ function Stop-WindowsProcesses {
     
     $processesFound = $false
     
-    # Define a unique type name with a GUID to avoid conflicts
-    $typeName = "Win32_NerfControl_$(New-Guid)".Replace('-','_')
+    Write-Host "Detecting windows with title containing '$WindowTitle'..." -ForegroundColor Yellow
     
-    # Load Windows API functions for window enumeration
-    # First check if the type already exists
-    if (-not ([System.Management.Automation.PSTypeName]$typeName).Type) {
-        Add-Type -TypeDefinition @"
-        using System;
-        using System.Text;
-        using System.Runtime.InteropServices;
-        
-        public class $typeName {
-            [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
-            public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-            [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
-            [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
-            [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
-            [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-            [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-            [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-            
-            // Wrapper method to handle the ref/out parameter issue
-            public static uint GetProcessIdFromWindowHandle(IntPtr hWnd) {
-                uint processId = 0;
-                GetWindowThreadProcessId(hWnd, out processId);
-                return processId;
-            }
-        }
-"@
-    }
-
-    # Constants for window messages
-    $WM_CLOSE = 0x0010
+    # Use a more direct approach with Get-Process which is more reliable
+    # Find processes with matching window titles
+    $windowProcesses = Get-Process | Where-Object { $_.MainWindowTitle -like "*$WindowTitle*" -and $_.MainWindowHandle -ne 0 }
     
-    Write-Host "Using Windows API to enumerate all visible windows..." -ForegroundColor Yellow
-    
-    # Collect all visible windows
-    $matchingWindows = @()
-    
-    # Enumerate all windows and find any with titles containing our search string
-    [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetType($typeName) } | ForEach-Object {
-        $Win32Type = $_.GetType($typeName)
-        
-        $enumWindowsMethod = $Win32Type.GetMethod('EnumWindows')
-        $getWindowTextLengthMethod = $Win32Type.GetMethod('GetWindowTextLength')
-        $getWindowTextMethod = $Win32Type.GetMethod('GetWindowText')
-        $isWindowVisibleMethod = $Win32Type.GetMethod('IsWindowVisible')
-        $getProcessIdFromWindowHandleMethod = $Win32Type.GetMethod('GetProcessIdFromWindowHandle')
-        $postMessageMethod = $Win32Type.GetMethod('PostMessage')
-        
-        $enumWindowsDelegate = [System.Delegate]::CreateDelegate(
-            $Win32Type.GetNestedType('EnumWindowsProc'),
-            { 
-                param($hWnd, $lParam)
-                
-                if ($isWindowVisibleMethod.Invoke($null, @($hWnd))) {
-                    $length = $getWindowTextLengthMethod.Invoke($null, @($hWnd))
-                    if ($length -gt 0) {
-                        $builder = New-Object System.Text.StringBuilder $length
-                        $getWindowTextMethod.Invoke($null, @($hWnd, $builder, $builder.Capacity + 1)) | Out-Null
-                        
-                        # Get process ID
-                        $pid = $getProcessIdFromWindowHandleMethod.Invoke($null, @($hWnd))
-                        
-                        # Check if window title contains our search string
-                        $windowTitle = $builder.ToString()
-                        if ($windowTitle -like "*$WindowTitle*") {
-                            $matchingWindows += [PSCustomObject]@{
-                                Handle = $hWnd
-                                ProcessId = $pid
-                                WindowTitle = $windowTitle
-                                PostMessage = $postMessageMethod
-                            }
-                        }
-                    }
-                }
-                return $true
-            }
-        )
-        
-        $enumWindowsMethod.Invoke($null, @($enumWindowsDelegate, [IntPtr]::Zero))
-    }
-    
-    # Fallback to a simpler method if reflection approach fails
-    if ($matchingWindows.Count -eq 0) {
-        Write-Host "Using simplified window detection..." -ForegroundColor Yellow
-        
-        # Try to find windows using Get-Process
-        $processes = Get-Process | Where-Object { $_.MainWindowTitle -like "*$WindowTitle*" }
-        foreach ($proc in $processes) {
-            $matchingWindows += [PSCustomObject]@{
-                Handle = $proc.MainWindowHandle
-                ProcessId = $proc.Id
-                WindowTitle = $proc.MainWindowTitle
-            }
-        }
-    }
-    
-    # Process any matching windows
-    if ($matchingWindows.Count -gt 0) {
-        Write-Host "Found $($matchingWindows.Count) windows matching '$WindowTitle':" -ForegroundColor Yellow
+    if ($windowProcesses -and $windowProcesses.Count -gt 0) {
+        Write-Host "Found $($windowProcesses.Count) windows matching '$WindowTitle':" -ForegroundColor Yellow
         $processesFound = $true
         
-        foreach ($window in $matchingWindows) {
+        foreach ($proc in $windowProcesses) {
             try {
-                Write-Host "  - Closing window: '$($window.WindowTitle)' (PID: $($window.ProcessId))" -ForegroundColor Gray
+                Write-Host "  - Closing window: '$($proc.MainWindowTitle)' (PID: $($proc.Id))" -ForegroundColor Gray
                 
-                # Try to close the window using CloseMainWindow first
-                $proc = Get-Process -Id $window.ProcessId -ErrorAction SilentlyContinue
-                if ($proc) {
-                    $proc.CloseMainWindow() | Out-Null
-                    Start-Sleep -Seconds 1
-                    
-                    # Check if still running
-                    $stillRunning = Get-Process -Id $window.ProcessId -ErrorAction SilentlyContinue
-                    if ($stillRunning) {
-                        Write-Host "    - Process still running, killing PID $($window.ProcessId)" -ForegroundColor Yellow
-                        Stop-Process -Id $window.ProcessId -Force -ErrorAction SilentlyContinue
-                    }
+                # Try to gracefully close the window
+                $proc.CloseMainWindow() | Out-Null
+                Start-Sleep -Milliseconds 500
+                
+                # Check if process is still running and force terminate if necessary
+                $stillRunning = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+                if ($stillRunning) {
+                    Write-Host "    - Process still running, killing PID $($proc.Id)" -ForegroundColor Yellow
+                    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                } else {
+                    Write-Host "    - Process closed gracefully" -ForegroundColor Green
                 }
             } catch {
                 Write-Host "    - Error handling window: $_" -ForegroundColor Red
@@ -321,7 +258,7 @@ function Stop-WindowsProcesses {
         
         # Use WMI to search by command line
         $query = "CommandLine like '%$CommandPattern%'"
-        $commandProcesses = Get-WmiObject Win32_Process -Filter $query
+        $commandProcesses = Get-WmiObject Win32_Process -Filter $query -ErrorAction SilentlyContinue
         
         if ($commandProcesses) {
             Write-Host "Found processes by command pattern:" -ForegroundColor Yellow
@@ -358,6 +295,43 @@ function Stop-WindowsProcesses {
         }
     } catch {
         Write-Host "Error querying processes by command line: $_" -ForegroundColor Red
+    }
+    
+    # Also look for specific exe processes that might be running our applications
+    try {
+        $exeProcesses = Get-Process -Name "python", "streamlit", "cmd" -ErrorAction SilentlyContinue
+        
+        if ($exeProcesses) {
+            # For each process, check its command line if we can access it
+            foreach ($proc in $exeProcesses) {
+                try {
+                    # Try to get the command line from WMI
+                    $wmiProc = Get-WmiObject Win32_Process -Filter "ProcessId = $($proc.Id)" -ErrorAction SilentlyContinue
+                    
+                    if ($wmiProc -and $wmiProc.CommandLine -like "*$CommandPattern*") {
+                        Write-Host "  - Found $($proc.Name) process with matching command (PID: $($proc.Id))" -ForegroundColor Gray
+                        $processesFound = $true
+                        
+                        # Try to close gracefully if it has a window
+                        if ($proc.MainWindowHandle -ne 0) {
+                            $proc.CloseMainWindow() | Out-Null
+                            Start-Sleep -Milliseconds 500
+                        }
+                        
+                        # Check if still running
+                        $stillRunning = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+                        if ($stillRunning) {
+                            Write-Host "    - Process still running, terminating PID $($proc.Id)" -ForegroundColor Yellow
+                            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                        }
+                    }
+                } catch {
+                    Write-Host "    - Error handling process: $_" -ForegroundColor Red
+                }
+            }
+        }
+    } catch {
+        Write-Host "Error finding executable processes: $_" -ForegroundColor Red
     }
     
     return $processesFound
