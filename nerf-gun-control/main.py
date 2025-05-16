@@ -203,9 +203,16 @@ class NerfGunBot(commands.Bot):
         # Initialize OBS message log with a welcome message
         initialize_obs_log()  # Initialize the OBS message log file
         log_message_for_obs("Nerf Bot is now online and ready to receive commands!", "System")
-        log_message_for_obs(f"Gun active status: {'ACTIVE' if self.gun_config.get('gun_active', False) else 'INACTIVE'}", "System")
         
-        # Add other initialization tasks here
+        # Force check gun status from database to ensure accuracy
+        gun_active = await self.check_gun_status()
+        status_message = f"Gun status: {'ACTIVE' if gun_active else 'INACTIVE'}"
+        log_message_for_obs(status_message, "System")
+        
+        # If gun is active, set it to home position on startup
+        if gun_active:
+            log_message_for_obs("Moving gun to home position on startup", "System")
+            await self.return_to_home()
 
     async def connect_db(self):
         self.db = await aiomysql.create_pool(
