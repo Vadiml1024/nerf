@@ -725,11 +725,16 @@ class NerfGunBot(commands.Bot):
         while True:
             if await self.get_gun_status():
                 await asyncio.sleep(SLEEP_TIMEOUT)
+                
+                # Check if we need to return to home
+                needs_home = False
                 async with self._lock:
-                    if self.at_home:
-                        continue
-                    if (datetime.now() - self._last_shot_time).total_seconds() >= WATCHDOG_TIMEOUT:
-                        await self.return_to_home()
+                    if not self.at_home and (datetime.now() - self._last_shot_time).total_seconds() >= WATCHDOG_TIMEOUT:
+                        needs_home = True
+            
+                # Call return_to_home outside the lock
+                if needs_home:
+                    await self.return_to_home()
             else:
                 await asyncio.sleep(SLEEP_TIMEOUT)
                 await self.check_gun_status()
