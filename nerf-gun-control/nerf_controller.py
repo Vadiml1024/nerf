@@ -10,7 +10,7 @@ class NerfController:
 
     def fire(self, x=0, y=0, shot=1, wait=True):
         url = f"{self.server_url}/nerf"
-        params = {"x": x, "y": y, "shots": shot}
+        params = {"x": x, "y": y, "shot": shot}
         try:
             response = requests.get(url, params=params)
             response.raise_for_status()
