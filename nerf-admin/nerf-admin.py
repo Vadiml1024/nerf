@@ -212,6 +212,44 @@ def set_gun_status(active):
     return execute_and_commit(query, (value,))
 
 
+def ensure_bonus_credits_column_exists():
+    """
+    Check if the 'bonus_credits' column exists in the 'subscribers' table.
+    If not, add it with a default value of 0.
+    """
+    conn = init_connection()
+    if not conn:
+        st.error("Could not verify 'bonus_credits' column - database connection failed")
+        return
+
+    try:
+        with conn.cursor() as cur:
+            # Check if the column exists
+            db_name = getenv("DB_NAME")
+            query = """
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_schema = %s
+              AND table_name = 'subscribers'
+              AND column_name = 'bonus_credits'
+            """
+            cur.execute(query, (db_name,))
+            column_exists = cur.fetchone()[0]
+
+            if not column_exists:
+                st.info("Adding missing 'bonus_credits' column to 'subscribers' table.")
+                alter_query = """
+                ALTER TABLE subscribers
+                ADD COLUMN bonus_credits INT NOT NULL DEFAULT 0 AFTER current_credits
+                """
+                cur.execute(alter_query)
+                conn.commit()
+                st.success("'bonus_credits' column added successfully.")
+    except Error as e:
+        st.error(f"Error checking or adding 'bonus_credits' column: {e}")
+        conn.rollback()
+
+
 @st.fragment(run_every=5)
 def show_gun_status():
     current_status = get_gun_status()
@@ -302,6 +340,7 @@ def main():
 
     # Ensure all required system_config rows exist
     ensure_system_config_defaults()
+    ensure_bonus_credits_column_exists()
     
     execute_and_commit("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
     # Add Gun Control button at the top of the sidebar
@@ -318,7 +357,7 @@ def main():
         "Choose a table", ["subscribers", "subscription_levels", "system_config"]
     )
     action = st.sidebar.selectbox(
-        "Choose an action", ["View", "Search", "Update", "Delete", "Insert"]
+        "Choose an action", ["View", "Search", "Update", "Delete", "Insert", "Bonus Credits"]
     )
 
     if table == "subscribers":
@@ -328,6 +367,7 @@ def main():
             "id",
             "subscription_level",
             "current_credits",
+            "bonus_credits",
             "subscription_anniversary",
             "last_reset_date",
         ]
@@ -336,6 +376,7 @@ def main():
             "ID",
             "Subscription Level",
             "Current Credits",
+            "Bonus Credits",
             "Subscription Anniversary",
             "Last Reset Date",
         ]
@@ -454,6 +495,22 @@ def main():
                 st.success(f"New {table.capitalize()} inserted successfully!")
             else:
                 st.error(f"Failed to insert new {table}.")
+
+    elif action == "Bonus Credits":
+        st.header("Add Bonus Credits")
+        user_id = st.text_input("Enter User ID")
+        amount = st.number_input("Amount", min_value=0)
+        if st.button("Add Credits"):
+            row = search_row("subscribers", "user_id", user_id)
+            if row:
+                current_bonus = row[columns.index("bonus_credits")]
+                new_bonus = current_bonus + amount
+                if update_row("subscribers", "user_id", user_id, {"bonus_credits": new_bonus}):
+                    st.success(f"Added {amount} bonus credits to {user_id}. They now have {new_bonus} bonus credits.")
+                else:
+                    st.error("Failed to update bonus credits.")
+            else:
+                st.warning("User not found.")
 
     # Add backup and restore buttons to sidebar
     st.sidebar.markdown("---")  # Add a separator

@@ -241,13 +241,14 @@ class NerfGunBot(commands.Bot):
             "user_id": username,
             "subscription_level": subscription_level,
             "current_credits": self.get_initial_credits(subscription_level),
+            "bonus_credits": 0,
             "subscription_anniversary": datetime.utcnow().strftime("%Y-%m-%d"),
             "last_reset_date": datetime.utcnow().strftime("%Y-%m-%d"),
         }
 
         query = """
-        INSERT INTO subscribers (user_id, subscription_level, current_credits, subscription_anniversary, last_reset_date)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO subscribers (user_id, subscription_level, current_credits, bonus_credits, subscription_anniversary, last_reset_date)
+        VALUES (%s, %s, %s, %s, %s, %s)
         """
 
         try:
@@ -259,6 +260,7 @@ class NerfGunBot(commands.Bot):
                             new_subscriber["user_id"],
                             new_subscriber["subscription_level"],
                             new_subscriber["current_credits"],
+                            new_subscriber["bonus_credits"],
                             new_subscriber["subscription_anniversary"],
                             new_subscriber["last_reset_date"],
                         ),
@@ -559,11 +561,12 @@ class NerfGunBot(commands.Bot):
                     return
 
                 current_credits = user_data["current_credits"]
+                bonus_credits = user_data.get("bonus_credits", 0)
                 credits_per_shot = await self.get_credit_for_shot_from_db(subscription_level)
 
                 total_cost = credits_per_shot * z
-                if current_credits < total_cost:
-                    credit_msg = f"{username} doesn't have enough credits. Required: {total_cost}, Available: {current_credits}"
+                if (current_credits + bonus_credits) < total_cost:
+                    credit_msg = f"{username} doesn't have enough credits. Required: {total_cost}, Available: {current_credits + bonus_credits}"
                     await channel.send(credit_msg)
                     log_message_for_obs(credit_msg, "System") 
                     return
@@ -579,8 +582,10 @@ class NerfGunBot(commands.Bot):
                 if shots_fired >= 0:
                     # Update user credits
                     credits_used = shots_fired * credits_per_shot
-                    remaining_credits = current_credits - credits_used
-                    await self.update_user_credits(username, remaining_credits)
+                    remaining_daily_credits = max(0, current_credits - credits_used)
+                    credits_deducted_from_bonus = max(0, credits_used - current_credits)
+                    remaining_bonus_credits = bonus_credits - credits_deducted_from_bonus
+                    await self.update_user_credits(username, remaining_daily_credits, remaining_bonus_credits)
         else:
             # Perform the fire action
             print("Channel owner, firing without credits")
@@ -602,6 +607,31 @@ class NerfGunBot(commands.Bot):
             error_message = "Error shooting... Gun INACTIVE"
             await channel.send(error_message)
             log_message_for_obs(error_message, "System")
+
+    @commands.command(name='addbonus')
+    async def add_bonus_command(self, ctx: commands.Context, username: str, amount: int):
+        if not ctx.author.is_mod:
+            await ctx.send("You must be a moderator to use this command.")
+            return
+
+        # Fetch the user's current bonus credits
+        query = "SELECT bonus_credits FROM subscribers WHERE user_id = %s"
+        async with self.db.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(query, (username,))
+                result = await cur.fetchone()
+                if result:
+                    current_bonus = result[0]
+                    new_bonus = current_bonus + amount
+                    
+                    # Update the bonus credits
+                    update_query = "UPDATE subscribers SET bonus_credits = %s WHERE user_id = %s"
+                    await cur.execute(update_query, (new_bonus, username))
+                    await conn.commit()
+                    
+                    await ctx.send(f"Added {amount} bonus credits to {username}. They now have {new_bonus} bonus credits.")
+                else:
+                    await ctx.send(f"User {username} not found.")
 
     async def old_check_subscription(self, user):
 
@@ -845,17 +875,17 @@ class NerfGunBot(commands.Bot):
 
         return status.get("shots", 0)
 
-    async def update_user_credits(self, user_id, new_credits):
+    async def update_user_credits(self, user_id, new_credits, new_bonus_credits):
         query = """
         UPDATE subscribers
-        SET current_credits = %s
+        SET current_credits = %s, bonus_credits = %s
         WHERE user_id = %s
         """
 
         try:
             async with self.db.acquire() as conn:
                 async with conn.cursor() as cursor:
-                    await cursor.execute(query, (new_credits, user_id))
+                    await cursor.execute(query, (new_credits, new_bonus_credits, user_id))
                     await conn.commit()  # Commit the transaction
                     return True
         except Exception as e:
