@@ -586,6 +586,7 @@ class NerfGunBot(commands.Bot):
                     credits_deducted_from_bonus = max(0, credits_used - current_credits)
                     remaining_bonus_credits = bonus_credits - credits_deducted_from_bonus
                     await self.update_user_credits(username, remaining_daily_credits, remaining_bonus_credits)
+                    remaining_credits = remaining_daily_credits + remaining_bonus_credits
         else:
             # Perform the fire action
             print("Channel owner, firing without credits")
